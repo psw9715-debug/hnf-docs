@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#F5F3EE">
+<title>혀니네홈패션 거래문서</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<style>
+:root {
+  --bg: #F5F3EE; --surface: #FFFFFF; --surface2: #F0EEEC;
+  --border: #E0DCD6; --text: #1A1814; --text2: #6B6660; --text3: #A8A4A0;
+  --accent: #2D5A3D; --accent2: #E4EDE6; --accent3: #4A7C5F;
+  --danger: #B03020; --danger2: #FDECEA;
+  --warn: #7A5C10; --warn2: #FDF3DC;
+  --info: #1A4A7A; --info2: #E0ECFA;
+  --radius: 16px; --radius-sm: 12px;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html { -webkit-text-size-adjust: 100%; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo','Noto Sans KR',sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; font-size: 16px; line-height: 1.5; overscroll-behavior-y: none; }
+.screen { display: none; min-height: 100dvh; flex-direction: column; }
+.screen.active { display: flex; }
+.header { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 52px 16px 12px; position: sticky; top: 0; z-index: 100; }
+.header-row { display: flex; align-items: center; gap: 10px; }
+.back-btn { width: 40px; height: 40px; border: none; background: var(--surface2); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 20px; flex-shrink: 0; touch-action: manipulation; }
+.header h1 { font-size: 19px; font-weight: 800; letter-spacing: -0.6px; }
+.header p { font-size: 13px; color: var(--text2); margin-top: 2px; font-weight: 500; }
+.header-actions { display: flex; gap: 6px; margin-left: auto; }
+.icon-btn { width: 40px; height: 40px; border: none; background: var(--surface2); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; touch-action: manipulation; }
+.content { flex: 1; overflow-y: auto; padding: 12px 16px 24px; -webkit-overflow-scrolling: touch; }
+.content::-webkit-scrollbar { display: none; }
+.card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
+.card-title { font-size: 12px; font-weight: 700; color: var(--text2); letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 14px; }
+.btn-primary { width: 100%; padding: 16px; background: var(--accent); color: white; border: none; border-radius: var(--radius); font-size: 17px; font-weight: 800; cursor: pointer; letter-spacing: -0.3px; transition: opacity 0.15s; min-height: 56px; touch-action: manipulation; }
+.btn-primary:active { opacity: 0.85; transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.5; }
+.btn-secondary { width: 100%; padding: 14px; background: var(--surface2); color: var(--text); border: none; border-radius: var(--radius); font-size: 16px; font-weight: 700; cursor: pointer; min-height: 52px; touch-action: manipulation; }
+.btn-ghost { width: 100%; padding: 12px; background: transparent; color: var(--text2); border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 14px; font-weight: 700; cursor: pointer; min-height: 48px; touch-action: manipulation; }
+.btn-sm { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 700; border: none; cursor: pointer; touch-action: manipulation; min-height: 44px; }
+.btn-edit { background: var(--surface2); color: var(--text); }
+.btn-del { background: var(--danger2); color: var(--danger); }
+.btn-row { display: flex; gap: 10px; }
+.btn-row .btn-primary, .btn-row .btn-secondary, .btn-row .btn-ghost { flex: 1; width: auto; }
+.btn-link { background: none; border: none; color: var(--accent); font-size: 14px; font-weight: 700; cursor: pointer; text-decoration: underline; padding: 4px; touch-action: manipulation; }
+.form-group { margin-bottom: 16px; }
+.form-label { font-size: 14px; font-weight: 700; color: var(--text2); margin-bottom: 8px; display: block; }
+.form-input, .form-select, textarea.form-input { width: 100%; padding: 14px 16px; border: 2px solid var(--border); border-radius: var(--radius-sm); font-size: 17px; background: var(--surface); color: var(--text); outline: none; -webkit-appearance: none; transition: border-color 0.15s; font-weight: 600; min-height: 52px; font-family: inherit; }
+textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
+.form-input:focus, .form-select:focus { border-color: var(--accent); }
+.input-row { display: flex; gap: 10px; }
+.input-row .form-group { flex: 1; }
+.search-box { position: relative; margin-bottom: 12px; }
+.search-box input { width: 100%; padding: 14px 16px; border: 2px solid var(--border); border-radius: var(--radius-sm); font-size: 16px; background: var(--surface); font-weight: 600; }
+.customer-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; box-shadow: var(--shadow); cursor: pointer; touch-action: manipulation; }
+.customer-card:active { opacity: 0.85; }
+.customer-card-name { font-size: 17px; font-weight: 800; margin-bottom: 4px; letter-spacing: -0.3px; }
+.customer-card-info { font-size: 13px; color: var(--text2); line-height: 1.6; font-weight: 500; }
+.customer-card-actions { display: flex; gap: 8px; margin-top: 12px; }
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { padding: 12px 16px; border: 2px solid var(--border); border-radius: 20px; font-size: 14px; font-weight: 700; background: var(--surface); color: var(--text2); cursor: pointer; touch-action: manipulation; }
+.chip.active { border-color: var(--accent); background: var(--accent2); color: var(--accent); }
+.item-row { background: var(--surface2); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px; border: 1px solid var(--border); }
+.item-row-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.item-badge { font-size: 12px; font-weight: 800; background: var(--accent); color: white; padding: 4px 10px; border-radius: 20px; }
+.item-actions { display: flex; gap: 6px; margin-left: auto; }
+.icon-sm { width: 30px; height: 30px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+.icon-sm.danger { background: var(--danger2); color: var(--danger); border-color: transparent; }
+.item-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.item-grid input { padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 15px; background: var(--surface); font-weight: 600; min-height: 44px; }
+.item-amount { text-align: right; font-size: 13px; color: var(--text2); font-weight: 700; margin-top: 8px; }
+.sync-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--accent2); border: 1.5px solid #B8D4C0; border-radius: var(--radius-sm); margin-bottom: 12px; font-size: 13px; font-weight: 700; color: var(--accent); cursor: pointer; }
+.sync-bar.off { background: var(--surface2); border-color: var(--border); color: var(--text3); }
+.sync-bar.warn { background: var(--warn2); border-color: #E0C870; color: var(--warn); }
+.empty { text-align: center; padding: 80px 20px; color: var(--text2); }
+.empty-icon { font-size: 56px; margin-bottom: 20px; }
+.empty-text { font-size: 19px; font-weight: 800; margin-bottom: 10px; color: var(--text); }
+.empty-sub { font-size: 15px; line-height: 1.7; font-weight: 500; }
+.bottom-bar { padding: 14px 16px; padding-bottom: max(14px, env(safe-area-inset-bottom)); background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-top: 1px solid var(--border); position: sticky; bottom: 0; }
+.info-text { font-size: 13px; color: var(--text3); line-height: 1.7; font-weight: 600; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.toggle-row:last-child { border-bottom: none; }
+.toggle-label { font-size: 15px; font-weight: 700; }
+.toggle-sub { font-size: 12px; color: var(--text3); margin-top: 2px; font-weight: 500; }
+.toggle { width: 50px; height: 30px; background: var(--border); border-radius: 15px; position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0; border: none; touch-action: manipulation; }
+.toggle.on { background: var(--accent); }
+.toggle-knob { width: 26px; height: 26px; background: white; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: left 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,0.2); pointer-events: none; }
+.toggle.on .toggle-knob { left: 22px; }
+.badge { display: inline-block; font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 12px; }
+.badge-green { background: var(--accent2); color: var(--accent); }
+.badge-gray { background: var(--surface2); color: var(--text3); }
+.history-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 8px; box-shadow: var(--shadow); cursor: pointer; display: flex; align-items: center; gap: 12px; touch-action: manipulation; }
+.history-item:active { opacity: 0.85; }
+.history-date { font-size: 12px; color: var(--text3); font-weight: 700; min-width: 76px; }
+.history-main { flex: 1; }
+.history-doctype { font-size: 14px; font-weight: 800; }
+.history-filename { font-size: 12px; color: var(--text2); margin-top: 2px; font-weight: 500; }
+.status-box { border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 12px; font-size: 14px; font-weight: 700; line-height: 1.7; }
+.status-box.info { background: var(--info2); color: var(--info); }
+.status-box.warn { background: var(--warn2); color: var(--warn); }
+.status-box.danger { background: var(--danger2); color: var(--danger); }
+.status-box.success { background: var(--accent2); color: var(--accent); }
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -3px; margin-right: 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.guide-box { background: var(--surface2); border-radius: var(--radius-sm); padding: 14px 16px; font-size: 13px; line-height: 2; color: var(--text); font-weight: 500; white-space: pre-wrap; }
+.guide-box b { font-weight: 800; }
+/* ---- offscreen document render target ---- */
+#doc-render-root { position: fixed; left: -99999px; top: 0; z-index: -1; }
+.doc-page { width: 794px; background: #fff; color: #111; font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif; padding: 34px 40px; box-sizing: border-box; }
+.doc-title { text-align: center; font-size: 26px; font-weight: 900; letter-spacing: 6px; margin-bottom: 18px; }
+.doc-toprow { display: flex; gap: 10px; margin-bottom: 4px; }
+.doc-leftbox, .doc-rightbox { border: 1.5px solid #333; }
+.doc-leftbox { flex: 1; }
+.doc-rightbox { flex: 1; position: relative; }
+.doc-row { display: flex; border-bottom: 1px solid #999; }
+.doc-row:last-child { border-bottom: none; }
+.doc-cell-label { width: 88px; flex-shrink: 0; background: #F2F0EC; padding: 7px 8px; font-size: 12px; font-weight: 700; border-right: 1px solid #999; display: flex; align-items: center; }
+.doc-cell-val { flex: 1; padding: 7px 10px; font-size: 12px; font-weight: 600; display: flex; align-items: center; word-break: break-all; }
+.doc-cell-val.small { font-size: 11px; }
+.doc-stamp { position: absolute; width: 62px; height: auto; opacity: 0.92; }
+.doc-table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+.doc-table th { background: #E9E6DF; border: 1px solid #333; padding: 8px 4px; font-size: 12px; font-weight: 800; }
+.doc-table td { border: 1px solid #999; padding: 7px 4px; font-size: 12px; text-align: center; font-weight: 600; }
+.doc-table td.tname { text-align: left; padding-left: 8px; }
+.doc-table td.num { text-align: right; padding-right: 8px; }
+.doc-total-row td { background: #F2F0EC; font-weight: 800; font-size: 13px; }
+.doc-footer { margin-top: 16px; font-size: 12px; font-weight: 500; line-height: 2; }
+.doc-footer b { font-weight: 800; }
+.doc-sign-row { margin-top: 22px; text-align: right; font-size: 13px; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<!-- ============ MAIN ============ -->
+<div id="screen-main" class="screen active">
+  <div class="header no-print">
+    <div class="header-row">
+      <div style="flex:1">
+        <h1>🧵 혀니네홈패션 거래문서</h1>
+        <p>업체를 선택해서 문서를 작성하세요</p>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" title="발송이력" onclick="goToHistory()">🕘</button>
+        <button class="icon-btn" title="주소록" onclick="goToCustomerList()">📇</button>
+        <button class="icon-btn" title="설정" onclick="showScreen('screen-settings');renderSettings()">⚙️</button>
+      </div>
+    </div>
+  </div>
+  <div class="content">
+    <div id="sync-status" class="sync-bar off" onclick="showScreen('screen-settings');renderSettings()">
+      <span id="sync-icon">☁️</span>
+      <span id="sync-text">동기화 설정하기 (여러 기기 공유)</span>
+    </div>
+    <div class="search-box">
+      <input type="text" id="main-search" placeholder="업체명 검색" oninput="renderMainList()">
+    </div>
+    <div id="main-empty" class="empty" style="display:none">
+      <div class="empty-icon">📇</div>
+      <div class="empty-text">등록된 거래처가 없어요</div>
+      <div class="empty-sub">주소록에서 거래처를 먼저 등록해주세요</div>
+    </div>
+    <div id="main-customer-list"></div>
+    <div style="height:20px"></div>
+  </div>
+  <div class="bottom-bar no-print">
+    <button class="btn-primary" onclick="goToCustomerList()">+ 거래처 추가 / 관리</button>
+  </div>
+</div>
+
+<!-- ============ CUSTOMER LIST ============ -->
+<div id="screen-customers" class="screen">
+  <div class="header no-print">
+    <div class="header-row">
+      <button class="back-btn" onclick="showScreen('screen-main');renderMainList()">←</button>
+      <div>
+        <h1>📇 주소록</h1>
+        <p>거래처 정보 관리</p>
+      </div>
+    </div>
+  </div>
+  <div class="content">
+    <div id="customer-list-body"></div>
+    <div style="height:20px"></div>
+  </div>
+  <div class="bottom-bar no-print">
+    <button class="btn-primary" onclick="goToCustomerEdit(null)">+ 새 거래처 등록</button>
+  </div>
+</div>
+
+<!-- ============ CUSTOMER EDIT ============ -->
+<div id="screen-customer-edit" class="screen">
+  <div class="header no-print">
+    <div class="header-row">
+      <button class="back-btn" onclick="showScreen('screen-customers');renderCustomerList()">←</button>
+      <div>
+        <h1 id="customer-edit-title">거래처 등록</h1>
+        <p>납품확인서에는 상세정보가 모두 표시돼요</p>
+      </div>
+    </div>
+  </div>
+  <div class="content">
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label">상호명 *</label>
+        <input class="form-input" id="ce-name" placeholder="예: (주)호산비전">
+      </div>
+      <div class="form-group">
+        <label class="form-label">사업자번호</label>
+        <input class="form-input" id="ce-bizno" placeholder="000-00-00000">
+      </div>
+      <div class="form-group">
+        <label class="form-label">대표자</label>
+        <input class="form-input" id="ce-ceo" placeholder="대표자명">
+      </div>
+      <div class="form-group">
+        <label class="form-label">주소</label>
+        <input class="form-input" id="ce-address" placeholder="사업장 주소">
+      </div>
+      <div class="input-row">
+        <div class="form-group">
+          <label class="form-label">담당자명</label>
+          <input class="form-input" id="ce-manager-name" placeholder="담당자">
+        </div>
+        <div class="form-group">
+          <label class="form-label">담당자 연락처</label>
+          <input class="form-input" id="ce-manager-phone" placeholder="010-0000-0000">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">담당자 이메일 *</label>
+        <input class="form-input" id="ce-manager-email" type="email" placeholder="문서를 받을 이메일" autocapitalize="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">호칭 (메일 인사말에 사용)</label>
+        <input class="form-input" id="ce-honorific" placeholder="예: 이승운 팀장님">
+      </div>
+      <div class="form-group">
+        <label class="form-label">구글드라이브 폴더 ID (선택)</label>
+        <input class="form-input" id="ce-drive-folder" placeholder="비워두면 첫 발송 시 자동 생성돼요">
+      </div>
+    </div>
+    <div id="ce-delete-wrap" style="display:none">
+      <button class="btn-ghost" style="color:var(--danger);border-color:var(--danger2)" onclick="deleteCustomer()">🗑 이 거래처 삭제</button>
+    </div>
+    <div style="height:20px"></div>
+  </div>
+  <div class="bottom-bar no-print">
+    <button class="btn-primary" onclick="saveCustomer()">저장</button>
+  </div>
+</div>
+
+<!-- ============ DOC (item entry + generate) ============ -->
+<div id="screen-doc" class="screen">
+  <div class="header no-print">
+    <div class="header-row">
+      <button class="back-btn" onclick="showScreen('screen-main');renderMainList()">←</button>
+      <div style="flex:1;overflow:hidden">
+        <h1 id="doc-customer-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">거래처</h1>
+        <p>품목을 입력하고 문서를 생성하세요</p>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" title="거래처 수정" onclick="goToCustomerEdit(currentCustomerId)">✏️</button>
+      </div>
+    </div>
+  </div>
+  <div class="content">
+    <div id="doc-customer-summary" class="card"></div>
+
+    <div class="card">
+      <div class="card-title">문서 종류 (복수 선택 가능)</div>
+      <div class="chip-row">
+        <button class="chip" id="chip-invoice" onclick="toggleDocType('invoice')">거래명세표</button>
+        <button class="chip" id="chip-confirm" onclick="toggleDocType('confirm')">납품확인서</button>
+        <button class="chip" id="chip-quote" onclick="toggleDocType('quote')">견적서</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="display:flex;align-items:center">
+        <span style="flex:1">품목</span>
+        <button class="btn-link" onclick="loadLastItems()">📋 최근 품목 불러오기</button>
+      </div>
+      <div id="item-list"></div>
+      <button class="btn-ghost" onclick="addItemRow()">+ 품목 추가</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">합계</div>
+      <div class="info-text" id="doc-total-display" style="font-size:15px;color:var(--text);font-weight:800"></div>
+      <div class="form-group" style="margin-top:14px;margin-bottom:0">
+        <label class="form-label">미수금 (거래명세표, 선택)</label>
+        <input class="form-input" id="doc-unpaid" placeholder="비워두면 공란으로 표시">
+      </div>
+    </div>
+
+    <div id="doc-status-area"></div>
+    <div style="height:90px"></div>
+  </div>
+  <div class="bottom-bar no-print">
+    <button class="btn-primary" id="doc-send-btn" onclick="generateAndSend()">생성 및 발송</button>
+  </div>
+</div>
+
+<!-- ============ HISTORY ============ -->
+<div id="screen-history" class="screen">
+  <div class="header no-print">
+    <div class="header-row">
+      <button class="back-btn" onclick="showScreen('screen-main');renderMainList()">←</button>
+      <div>
+        <h1>🕘 발송이력</h1>
+        <p>보낸 문서를 검색하고 다시 열어보세요</p>
+      </div>
+    </div>
+  </div>
+  <div class="content">
+    <div class="search-box">
+      <input type="text" id="history-search" placeholder="업체명 또는 날짜(YYYYMMDD) 검색" oninput="renderHistory()">
+    </div>
+    <div id="history-empty" class="empty" style="display:none">
+      <div class="empty-icon">📭</div>
+      <div class="empty-text">발송 이력이 없어요</div>
+      <div class="empty-sub">문서를 생성하고 발송하면 여기에 기록돼요</div>
+    </div>
+    <div id="history-list"></div>
+    <div style="height:20px"></div>
+  </div>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div id="screen-settings" class="screen">
+  <div class="header no-print">
+    <div class="header-row">
+      <button class="back-btn" onclick="showScreen('screen-main');renderMainList()">←</button>
+      <div>
+        <h1>⚙️ 설정</h1>
+        <p>공급자정보 · 계정 연결</p>
+      </div>
+    </div>
+  </div>
+  <div class="content">
+    <div class="card">
+      <div class="card-title">구글 계정 (Gmail 발송 · Drive 백업)</div>
+      <div class="info-text" style="margin-bottom:12px">suhyunfabric@gmail.com 으로 로그인하세요. 로그인은 이 브라우저에서만 유지되며 약 1시간 후 만료됩니다.</div>
+      <div class="form-group">
+        <label class="form-label">Google OAuth 클라이언트 ID</label>
+        <input class="form-input" id="google-client-id" placeholder="xxxxx.apps.googleusercontent.com" autocapitalize="off">
+        <div style="margin-top:8px">
+          <button class="btn-link" onclick="showGoogleSetupGuide()">발급 방법 보기 (최초 1회, 계정 소유자 필요)</button>
+        </div>
+      </div>
+      <button class="btn-secondary" onclick="saveGoogleClientId()" style="margin-bottom:10px">클라이언트 ID 저장</button>
+      <div id="google-auth-status" class="info-text" style="color:var(--text);font-weight:700;margin-bottom:10px"></div>
+      <button class="btn-primary" onclick="startGoogleLogin()">🔐 구글 로그인</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">공급자 정보 (거의 변경 없음)</div>
+      <div class="form-group"><label class="form-label">상호</label><input class="form-input" id="sup-name"></div>
+      <div class="form-group"><label class="form-label">사업자번호</label><input class="form-input" id="sup-bizno"></div>
+      <div class="form-group"><label class="form-label">대표</label><input class="form-input" id="sup-ceo"></div>
+      <div class="form-group"><label class="form-label">주소</label><input class="form-input" id="sup-address"></div>
+      <div class="input-row">
+        <div class="form-group"><label class="form-label">업태</label><input class="form-input" id="sup-biztype"></div>
+        <div class="form-group"><label class="form-label">종목</label><input class="form-input" id="sup-bizitem"></div>
+      </div>
+      <div class="input-row">
+        <div class="form-group"><label class="form-label">전화</label><input class="form-input" id="sup-phone"></div>
+        <div class="form-group"><label class="form-label">팩스</label><input class="form-input" id="sup-fax"></div>
+      </div>
+      <div class="form-group"><label class="form-label">입금계좌</label><input class="form-input" id="sup-bank"></div>
+      <div class="form-group"><label class="form-label">구글드라이브 상위 폴더 ID</label><input class="form-input" id="sup-root-folder"></div>
+      <button class="btn-secondary" onclick="saveSupplierInfo()">저장</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">GitHub 동기화 (여러 기기 공유)</div>
+      <div class="info-text" style="margin-bottom:14px">
+        GitHub 토큰을 입력하면 주소록·거래이력·발송이력을 모든 기기에서 같은 데이터로 볼 수 있어요.<br>토큰은 이 기기에만 저장되고 외부에 노출되지 않아요.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Personal Access Token</label>
+        <input type="password" id="github-token" class="form-input" placeholder="ghp_xxxxxxxxxxxxxxxx" autocomplete="off">
+        <div style="margin-top:8px">
+          <button class="btn-link" onclick="showTokenGuide()">토큰 발급 방법 보기</button>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="verifyToken()" style="margin-bottom:10px">토큰 확인 & 연결</button>
+      <div id="sync-verify-result"></div>
+      <div id="sync-action-card" style="display:none;margin-top:14px">
+        <div id="sync-gist-info" class="info-text" style="color:var(--text);font-weight:700;margin-bottom:14px"></div>
+        <div class="btn-row" style="margin-bottom:12px">
+          <button class="btn-secondary" onclick="syncPull()">📥 받아오기</button>
+          <button class="btn-primary" onclick="syncPush()">📤 지금 업로드</button>
+        </div>
+        <div class="toggle-row" style="border-bottom:none">
+          <div>
+            <div class="toggle-label">자동 동기화</div>
+            <div class="toggle-sub">저장할 때마다 자동 업로드</div>
+          </div>
+          <button class="toggle" id="auto-sync-toggle" onclick="toggleAutoSync()">
+            <div class="toggle-knob"></div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">파일 백업 / 복원</div>
+      <div class="info-text" style="margin-bottom:12px">토큰 없이도 파일로 기기 간 데이터를 옮길 수 있어요</div>
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="backupFile()">💾 파일 저장</button>
+        <button class="btn-ghost" onclick="document.getElementById('restore-input').click()">📂 파일 불러오기</button>
+      </div>
+      <input type="file" id="restore-input" accept=".json" style="display:none" onchange="restoreFile(this)">
+    </div>
+    <div style="height:20px"></div>
+  </div>
+</div>
+
+<!-- ============ offscreen render target for PDF generation ============ -->
+<div id="doc-render-root"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
