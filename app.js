@@ -490,7 +490,14 @@ function formatDateCompact(d) {
   const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
   return `${y}${m}${day}`;
 }
-function formatDateKorean(d) { return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`; }
+function formatDateKorean(d) {
+  const m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}년 ${m}월 ${day}일`;
+}
+// 사업자번호/계좌번호처럼 숫자-숫자 사이 하이픈에 원본 서식대로 공백을 넣어줌 ("772-88-02611" → "772 - 88 - 02611")
+function spaceDashes(s) { return String(s || '').replace(/(\d)-(?=\d)/g, '$1 - '); }
+// 계좌 라인 표시용: 하이픈 공백 + "예금주:" → "예금주 :" (원본 서식)
+function formatBankLine(s) { return spaceDashes(s).replace(/예금주\s*:/g, '예금주 :'); }
 
 /* 원본 엑셀 열너비(A~J, pt)로부터 계산한 비율. 상단 정보 박스는
    왼쪽박스(A~E, 41.88%) + 간격(F, 4.90%) + 오른쪽박스(G~J, 53.22%)로 구성됨. */
@@ -538,13 +545,13 @@ function buildDocNode(docType, customer, items, unpaid, now) {
     }
   }
 
-  const stampImg = `<img class="doc-stamp" src="${STAMP_DATA_URL}" style="left:6px;top:-9px">`;
+  const stampImg = `<img class="doc-stamp" src="${STAMP_DATA_URL}" style="left:8px;top:-7px">`;
 
   // 오른쪽 "공급자" 박스 — 원본 엑셀 행높이 비율(20.25:20.25:20.25:32.25:20.25:20.25pt = 1:1:1:1.6:1:1)
   const rightBox = `
     <div class="doc-rightbox">
       ${boxRow(1, `<div style="flex:1;text-align:center;font-weight:800;font-size:13px;background:#F2F0EC;display:flex;align-items:center;justify-content:center">공 급 자</div>`)}
-      ${boxRow(1, cellLabel(RB_LABEL1, '사업자번호') + cellVal(RB_VAL1_SINGLE, escapeHtml(supplier.bizNo)))}
+      ${boxRow(1, cellLabel(RB_LABEL1, '사업자번호') + cellVal(RB_VAL1_SINGLE, escapeHtml(spaceDashes(supplier.bizNo))))}
       ${boxRow(1, cellLabel(RB_LABEL1, '업체명') + cellVal(RB_VAL1, escapeHtml(supplier.name)) + cellLabel(RB_LABEL2, '대 표') + cellVal(RB_VAL2, escapeHtml(supplier.ceo) + stampImg, 'relative'))}
       ${boxRow(1.6, cellLabel(RB_LABEL1, '주소') + cellVal(RB_VAL1_SINGLE, escapeHtml(supplier.address), 'small'))}
       ${boxRow(1, cellLabel(RB_LABEL1, '업태') + cellVal(RB_VAL1, escapeHtml(supplier.bizType), 'small') + cellLabel(RB_LABEL2, '종 목') + cellVal(RB_VAL2, escapeHtml(supplier.bizItem), 'small'))}
@@ -564,7 +571,7 @@ function buildDocNode(docType, customer, items, unpaid, now) {
   if (docType === 'confirm') {
     leftRows = `
       ${boxRow(1, cellLabel(LB_LABEL, '거래처명') + cellVal(LB_VAL, escapeHtml(customer.name) + ' 귀하'))}
-      ${boxRow(1, cellLabel(LB_LABEL, '사업자번호') + cellVal(LB_VAL, escapeHtml(customer.bizNo)))}
+      ${boxRow(1, cellLabel(LB_LABEL, '사업자번호') + cellVal(LB_VAL, escapeHtml(spaceDashes(customer.bizNo))))}
       ${boxRow(1.6, cellLabel(LB_LABEL, '주소') + cellVal(LB_VAL, escapeHtml(customer.address), 'small'))}
       ${boxRow(1, cellLabel(LB_LABEL, '대표자') + cellVal(LB_VAL, escapeHtml(customer.ceo)))}
       ${boxRow(1.6, cellLabel(LB_LABEL, '담당자') + cellVal(LB_VAL, contactHtml, 'small'))}
@@ -573,7 +580,7 @@ function buildDocNode(docType, customer, items, unpaid, now) {
     leftRows = `
       ${boxRow(1, cellLabel(LB_LABEL, '발행일자') + cellVal(LB_VAL, formatDateISO(now)))}
       ${boxRow(1, cellLabel(LB_LABEL, '거래처명') + cellVal(LB_VAL, escapeHtml(customer.name) + ' 귀하'))}
-      ${boxRow(1, cellLabel(LB_LABEL, '사업자번호') + cellVal(LB_VAL, escapeHtml(customer.bizNo)))}
+      ${boxRow(1, cellLabel(LB_LABEL, '사업자번호') + cellVal(LB_VAL, escapeHtml(spaceDashes(customer.bizNo))))}
       ${boxRow(1.4, cellLabel(LB_LABEL, '주소') + cellVal(LB_VAL, escapeHtml(customer.address), 'small'))}
       ${boxRow(1.6, cellLabel(LB_LABEL, '담당자') + cellVal(LB_VAL, contactHtml, 'small'))}
       ${boxRow(1.8, cellLabel(LB_LABEL, '합계금액') + cellVal(LB_VAL, '₩' + fmtNum(total), 'bold'))}
@@ -597,7 +604,7 @@ function buildDocNode(docType, customer, items, unpaid, now) {
       <tbody>${rowsHtml}${fillerHtml}${totalRow}</tbody>
     </table>`;
 
-  const bank = escapeHtml(supplier.bank);
+  const bank = escapeHtml(formatBankLine(supplier.bank));
   let noticeBody = '';
   let signHtml = '';
   if (docType === 'invoice') {
