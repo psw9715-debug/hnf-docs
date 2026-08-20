@@ -119,8 +119,8 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
 .doc-title { text-align: center; font-size: 24px; font-weight: 900; letter-spacing: 6px; padding: 14px 0 10px; }
 .doc-toprow { display: flex; height: 185px; border-top: 1.5px solid #000; }
 .doc-leftbox, .doc-rightbox { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; overflow: hidden; }
-.doc-leftbox { flex: 0 0 41.88%; border-right: 1.5px solid #000; }
-.doc-rightbox { flex: 0 0 53.22%; }
+.doc-leftbox { flex: 0 0 41.88%; margin-right: 10px; border-right: 1.5px solid #000; }
+.doc-rightbox { flex: 1 1 auto; }
 .doc-row { display: flex; border-bottom: 1px solid #999; box-sizing: border-box; min-height: 0; }
 .doc-row:last-child { border-bottom: none; }
 .doc-cell-label { flex-shrink: 0; background: #F2F0EC; padding: 4px 8px; font-size: 12px; font-weight: 700; border-right: 1px solid #999; display: flex; align-items: center; box-sizing: border-box; }
@@ -300,7 +300,16 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
     </div>
 
     <div class="card">
-      <div class="card-title">합계</div>
+      <div class="toggle-row" style="border-bottom:none;padding-top:0">
+        <div>
+          <div class="toggle-label">부가세 적용</div>
+          <div class="toggle-sub">켜면 공급가액의 10%를 부가세로 계산해 합계에 더해요</div>
+        </div>
+        <button class="toggle" id="vat-toggle" onclick="toggleVat()">
+          <div class="toggle-knob"></div>
+        </button>
+      </div>
+      <div class="card-title" style="margin-top:14px">합계</div>
       <div class="info-text" id="doc-total-display" style="font-size:15px;color:var(--text);font-weight:800"></div>
       <div class="form-group" style="margin-top:14px;margin-bottom:0">
         <label class="form-label">미수금 (거래명세표, 선택)</label>

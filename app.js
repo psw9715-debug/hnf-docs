@@ -185,6 +185,7 @@ let googleConfig = { clientId: '' };
 let currentCustomerId = null;
 let currentItems = [];
 let selectedDocTypes = new Set();
+let vatEnabled = false;
 
 let googleAccessToken = null;
 let googleTokenExpiresAt = 0;
@@ -368,7 +369,15 @@ function openDocScreen(customerId) {
   loadLastItems(true);
   document.getElementById('doc-unpaid').value = '';
   document.getElementById('doc-status-area').innerHTML = '';
+  vatEnabled = false;
+  document.getElementById('vat-toggle').classList.remove('on');
   showScreen('screen-doc');
+}
+
+function toggleVat() {
+  vatEnabled = !vatEnabled;
+  document.getElementById('vat-toggle').classList.toggle('on', vatEnabled);
+  renderItemList();
 }
 
 function renderDocTypeChips() {
@@ -423,7 +432,7 @@ function loadLastItems(silent) {
 function calcRow(it) {
   const qty = Number(it.qty) || 0, price = Number(it.price) || 0;
   const supply = qty * price;
-  const vat = Math.round(supply * 0.1);
+  const vat = vatEnabled ? Math.round(supply * 0.1) : 0;
   return { qty, price, supply, vat };
 }
 
@@ -447,7 +456,7 @@ function renderItemList() {
         <input placeholder="수량" inputmode="decimal" value="${escapeAttr(it.qty)}" oninput="updateItemField(${idx},'qty',this.value)">
         <input placeholder="단가" inputmode="decimal" value="${escapeAttr(it.price)}" oninput="updateItemField(${idx},'price',this.value)">
       </div>
-      <div class="item-amount">공급가액 ${fmtNum(r.supply)}원 · 부가세 ${fmtNum(r.vat)}원</div>
+      <div class="item-amount">공급가액 ${fmtNum(r.supply)}원${vatEnabled ? ' · 부가세 ' + fmtNum(r.vat) + '원' : ''}</div>
     </div>`;
   }).join('');
   updateTotalsDisplay();
@@ -456,8 +465,9 @@ function renderItemList() {
 function updateTotalsDisplay() {
   let supplySum = 0, vatSum = 0;
   currentItems.forEach(it => { const r = calcRow(it); supplySum += r.supply; vatSum += r.vat; });
-  document.getElementById('doc-total-display').textContent =
-    `공급가액 ${fmtNum(supplySum)}원 + 부가세 ${fmtNum(vatSum)}원 = 합계 ${fmtNum(supplySum + vatSum)}원`;
+  document.getElementById('doc-total-display').textContent = vatEnabled
+    ? `공급가액 ${fmtNum(supplySum)}원 + 부가세 ${fmtNum(vatSum)}원 = 합계 ${fmtNum(supplySum + vatSum)}원`
+    : `합계 ${fmtNum(supplySum)}원 (부가세 미적용)`;
 }
 
 function showDocStatus(kind, msg) {
@@ -554,9 +564,9 @@ function buildDocNode(docType, customer, items, unpaid, now) {
   } else {
     leftRows = `
       ${boxRow(1, cellLabel(LB_LABEL, '발행일자') + cellVal(LB_VAL, formatDateISO(now)))}
-      ${boxRow(2, cellLabel(LB_LABEL, '거래처명') + cellVal(LB_VAL, escapeHtml(customer.name) + ' 귀하'))}
-      ${boxRow(1.6, '')}
-      ${boxRow(2, cellLabel(LB_LABEL, '합계금액') + cellVal(LB_VAL, '₩' + fmtNum(total), 'bold'))}
+      ${boxRow(1, cellLabel(LB_LABEL, '거래처명') + cellVal(LB_VAL, escapeHtml(customer.name) + ' 귀하'))}
+      ${boxRow(1.6, cellLabel(LB_LABEL, '담당자') + cellVal(LB_VAL, escapeHtml(customer.managerName || '') + (customer.managerPhone ? ' / ' + escapeHtml(customer.managerPhone) : '')))}
+      ${boxRow(3, cellLabel(LB_LABEL, '합계금액') + cellVal(LB_VAL, '₩' + fmtNum(total), 'bold'))}
     `;
   }
 
@@ -568,7 +578,7 @@ function buildDocNode(docType, customer, items, unpaid, now) {
 
   const totalRow = docType === 'confirm'
     ? `<tr class="doc-total-row"><td colspan="3">합&nbsp;&nbsp;계</td><td></td><td colspan="2" class="num">${fmtNum(supplySum)}</td><td>원</td></tr>`
-    : `<tr class="doc-total-row"><td colspan="2">합&nbsp;&nbsp;계</td><td colspan="3"></td><td class="num">${fmtNum(supplySum)}</td><td class="num">${fmtNum(vatSum)}</td></tr>`;
+    : `<tr class="doc-total-row"><td colspan="2">합&nbsp;&nbsp;계</td><td colspan="3"></td><td class="num">${fmtNum(supplySum)}</td><td class="num">${vatEnabled ? fmtNum(vatSum) : ''}</td></tr>`;
 
   const tableHtml = `
     <table class="doc-table">
