@@ -116,19 +116,20 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
 #doc-render-root { position: fixed; left: -99999px; top: 0; z-index: -1; }
 .doc-page { width: 794px; background: #fff; color: #111; font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif; padding: 34px 40px; box-sizing: border-box; }
 .doc-title { text-align: center; font-size: 26px; font-weight: 900; letter-spacing: 6px; margin-bottom: 18px; }
-.doc-toprow { display: flex; gap: 10px; margin-bottom: 4px; }
-.doc-leftbox, .doc-rightbox { border: 1.5px solid #333; }
-.doc-leftbox { flex: 1; }
-.doc-rightbox { flex: 1; position: relative; }
-.doc-row { display: flex; border-bottom: 1px solid #999; }
+.doc-toprow { display: flex; gap: 12px; margin-bottom: 4px; height: 185px; }
+.doc-leftbox, .doc-rightbox { border: 1.5px solid #333; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; overflow: hidden; }
+.doc-leftbox { flex: 0 0 41.88%; }
+.doc-rightbox { flex: 0 0 53.22%; }
+.doc-row { display: flex; border-bottom: 1px solid #999; box-sizing: border-box; min-height: 0; }
 .doc-row:last-child { border-bottom: none; }
-.doc-cell-label { width: 88px; flex-shrink: 0; background: #F2F0EC; padding: 7px 8px; font-size: 12px; font-weight: 700; border-right: 1px solid #999; display: flex; align-items: center; }
-.doc-cell-val { flex: 1; padding: 7px 10px; font-size: 12px; font-weight: 600; display: flex; align-items: center; word-break: break-all; }
-.doc-cell-val.small { font-size: 11px; }
-.doc-stamp { position: absolute; width: 62px; height: auto; opacity: 0.92; }
-.doc-table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+.doc-cell-label { flex-shrink: 0; background: #F2F0EC; padding: 4px 8px; font-size: 12px; font-weight: 700; border-right: 1px solid #999; display: flex; align-items: center; box-sizing: border-box; }
+.doc-cell-val { flex-shrink: 0; padding: 4px 10px; font-size: 12px; font-weight: 600; display: flex; align-items: center; word-break: break-all; box-sizing: border-box; position: relative; }
+.doc-cell-val.small { font-size: 11px; line-height: 1.3; }
+.doc-cell-val.bold { font-weight: 800; font-size: 13px; }
+.doc-stamp { position: absolute; width: 58px; height: auto; opacity: 0.92; }
+.doc-table { width: 100%; border-collapse: collapse; margin-top: 14px; table-layout: fixed; }
 .doc-table th { background: #E9E6DF; border: 1px solid #333; padding: 8px 4px; font-size: 12px; font-weight: 800; }
-.doc-table td { border: 1px solid #999; padding: 7px 4px; font-size: 12px; text-align: center; font-weight: 600; }
+.doc-table td { border: 1px solid #999; padding: 7px 4px; font-size: 12px; text-align: center; font-weight: 600; word-break: break-word; }
 .doc-table td.tname { text-align: left; padding-left: 8px; }
 .doc-table td.num { text-align: right; padding-right: 8px; }
 .doc-total-row td { background: #F2F0EC; font-weight: 800; font-size: 13px; }

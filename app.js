@@ -482,6 +482,21 @@ function formatDateCompact(d) {
 }
 function formatDateKorean(d) { return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`; }
 
+/* 원본 엑셀 열너비(A~J, pt)로부터 계산한 비율. 상단 정보 박스는
+   왼쪽박스(A~E, 41.88%) + 간격(F, 4.90%) + 오른쪽박스(G~J, 53.22%)로 구성됨. */
+const RB_LABEL1 = 20.95, RB_VAL1_SINGLE = 79.05, RB_VAL1 = 27.10, RB_LABEL2 = 24.87, RB_VAL2 = 27.10;
+const LB_LABEL = 40.45, LB_VAL = 59.55;
+
+function boxRow(ratio, cellsHtml) {
+  return `<div class="doc-row" style="flex:${ratio} 1 0">${cellsHtml}</div>`;
+}
+function cellLabel(pct, text) {
+  return `<div class="doc-cell-label" style="flex:0 0 ${pct}%">${text}</div>`;
+}
+function cellVal(pct, html, extra) {
+  return `<div class="doc-cell-val${extra ? ' ' + extra : ''}" style="flex:0 0 ${pct}%">${html}</div>`;
+}
+
 function buildDocNode(docType, customer, items, unpaid, now) {
   const supplier = appData.supplier;
   const titleMap = { invoice: '거 래 명 세 서', confirm: '납&nbsp;&nbsp;품&nbsp;&nbsp;확&nbsp;&nbsp;인&nbsp;&nbsp;서', quote: '견 적 서' };
@@ -502,51 +517,53 @@ function buildDocNode(docType, customer, items, unpaid, now) {
   }).join('');
   const total = supplySum + vatSum;
 
-  const stampImg = `<img class="doc-stamp" src="${STAMP_DATA_URL}" style="left:258px;top:38px">`;
+  const stampImg = `<img class="doc-stamp" src="${STAMP_DATA_URL}" style="left:6px;top:-9px">`;
 
+  // 오른쪽 "공급자" 박스 — 원본 엑셀 행높이 비율(20.25:20.25:20.25:32.25:20.25:20.25pt = 1:1:1:1.6:1:1)
   const rightBox = `
     <div class="doc-rightbox">
-      <div style="text-align:center;font-weight:800;font-size:13px;padding:6px 0;border-bottom:1px solid #333;background:#F2F0EC">공 급 자</div>
-      <div class="doc-row"><div class="doc-cell-label">사업자번호</div><div class="doc-cell-val">${escapeHtml(supplier.bizNo)}</div></div>
-      <div class="doc-row">
-        <div class="doc-cell-label">업체명</div><div class="doc-cell-val">${escapeHtml(supplier.name)}</div>
-        <div class="doc-cell-label" style="width:56px">대 표</div><div class="doc-cell-val">${escapeHtml(supplier.ceo)}</div>
-      </div>
-      <div class="doc-row"><div class="doc-cell-label">주소</div><div class="doc-cell-val small">${escapeHtml(supplier.address)}</div></div>
-      <div class="doc-row">
-        <div class="doc-cell-label">업태</div><div class="doc-cell-val small">${escapeHtml(supplier.bizType)}</div>
-        <div class="doc-cell-label" style="width:56px">종 목</div><div class="doc-cell-val small">${escapeHtml(supplier.bizItem)}</div>
-      </div>
-      <div class="doc-row">
-        <div class="doc-cell-label">전화</div><div class="doc-cell-val">${escapeHtml(supplier.phone)}</div>
-        <div class="doc-cell-label" style="width:56px">팩 스</div><div class="doc-cell-val">${escapeHtml(supplier.fax)}</div>
-      </div>
-      ${stampImg}
+      ${boxRow(1, `<div style="flex:1;text-align:center;font-weight:800;font-size:13px;background:#F2F0EC;display:flex;align-items:center;justify-content:center">공 급 자</div>`)}
+      ${boxRow(1, cellLabel(RB_LABEL1, '사업자번호') + cellVal(RB_VAL1_SINGLE, escapeHtml(supplier.bizNo)))}
+      ${boxRow(1, cellLabel(RB_LABEL1, '업체명') + cellVal(RB_VAL1, escapeHtml(supplier.name)) + cellLabel(RB_LABEL2, '대 표') + cellVal(RB_VAL2, escapeHtml(supplier.ceo) + stampImg, 'relative'))}
+      ${boxRow(1.6, cellLabel(RB_LABEL1, '주소') + cellVal(RB_VAL1_SINGLE, escapeHtml(supplier.address), 'small'))}
+      ${boxRow(1, cellLabel(RB_LABEL1, '업태') + cellVal(RB_VAL1, escapeHtml(supplier.bizType), 'small') + cellLabel(RB_LABEL2, '종 목') + cellVal(RB_VAL2, escapeHtml(supplier.bizItem), 'small'))}
+      ${boxRow(1, cellLabel(RB_LABEL1, '전화') + cellVal(RB_VAL1, escapeHtml(supplier.phone)) + cellLabel(RB_LABEL2, '팩 스') + cellVal(RB_VAL2, escapeHtml(supplier.fax)))}
     </div>`;
 
+  // 왼쪽 박스 — 문서종류별로 원본 엑셀 병합 구조가 다름
   let leftRows;
   if (docType === 'confirm') {
     leftRows = `
-      <div class="doc-row"><div class="doc-cell-label">거래처명</div><div class="doc-cell-val">${escapeHtml(customer.name)} 귀하</div></div>
-      <div class="doc-row"><div class="doc-cell-label">사업자번호</div><div class="doc-cell-val">${escapeHtml(customer.bizNo)}</div></div>
-      <div class="doc-row"><div class="doc-cell-label">주소</div><div class="doc-cell-val small">${escapeHtml(customer.address)}</div></div>
-      <div class="doc-row"><div class="doc-cell-label">대표자</div><div class="doc-cell-val">${escapeHtml(customer.ceo)}</div></div>
-      <div class="doc-row"><div class="doc-cell-label">담당자</div><div class="doc-cell-val">${escapeHtml(customer.managerName)}${customer.managerPhone ? ' / ' + escapeHtml(customer.managerPhone) : ''}</div></div>
+      ${boxRow(1, cellLabel(LB_LABEL, '거래처명') + cellVal(LB_VAL, escapeHtml(customer.name) + ' 귀하'))}
+      ${boxRow(1, cellLabel(LB_LABEL, '사업자번호') + cellVal(LB_VAL, escapeHtml(customer.bizNo)))}
+      ${boxRow(2.6, cellLabel(LB_LABEL, '주소') + cellVal(LB_VAL, escapeHtml(customer.address), 'small'))}
+      ${boxRow(1, cellLabel(LB_LABEL, '대표자') + cellVal(LB_VAL, escapeHtml(customer.ceo)))}
+      ${boxRow(1, cellLabel(LB_LABEL, '담당자') + cellVal(LB_VAL, escapeHtml(customer.managerName) + (customer.managerPhone ? ' / ' + escapeHtml(customer.managerPhone) : '')))}
     `;
   } else {
     leftRows = `
-      <div class="doc-row"><div class="doc-cell-label">발행일자</div><div class="doc-cell-val">${formatDateISO(now)}</div></div>
-      <div class="doc-row"><div class="doc-cell-label">거래처명</div><div class="doc-cell-val">${escapeHtml(customer.name)} 귀하</div></div>
-      <div class="doc-row"><div class="doc-cell-label">합계금액</div><div class="doc-cell-val" style="font-weight:800">${fmtNum(total)} 원</div></div>
+      ${boxRow(1, cellLabel(LB_LABEL, '발행일자') + cellVal(LB_VAL, formatDateISO(now)))}
+      ${boxRow(2, cellLabel(LB_LABEL, '거래처명') + cellVal(LB_VAL, escapeHtml(customer.name) + ' 귀하'))}
+      ${boxRow(1.6, '')}
+      ${boxRow(2, cellLabel(LB_LABEL, '합계금액') + cellVal(LB_VAL, '₩' + fmtNum(total), 'bold'))}
     `;
   }
 
+  // 품목표 — 원본 열너비 비율(No 4.5 / 품명 32.5 / 규격 9.8 / 수량 11.2 / 단가 14.4 / 공급가액 13.2 / 비고 14.4 %)
+  const colgroup = `<colgroup>
+    <col style="width:4.5%"><col style="width:32.5%"><col style="width:9.8%">
+    <col style="width:11.2%"><col style="width:14.4%"><col style="width:13.2%"><col style="width:14.4%">
+  </colgroup>`;
+
+  const totalRow = docType === 'confirm'
+    ? `<tr class="doc-total-row"><td colspan="3">합&nbsp;&nbsp;계</td><td></td><td colspan="2" class="num">${fmtNum(supplySum)}</td><td>원</td></tr>`
+    : `<tr class="doc-total-row"><td colspan="2">합&nbsp;&nbsp;계</td><td colspan="3"></td><td class="num">${fmtNum(supplySum)}</td><td class="num">${fmtNum(vatSum)}</td></tr>`;
+
   const tableHtml = `
     <table class="doc-table">
-      <thead><tr><th style="width:32px">No</th><th>품명</th><th style="width:90px">규격</th><th style="width:56px">수량</th><th style="width:76px">단가</th><th style="width:90px">공급가액</th><th style="width:76px">비고(VAT)</th></tr></thead>
-      <tbody>${rowsHtml}
-        <tr class="doc-total-row"><td colspan="2">합&nbsp;&nbsp;계</td><td colspan="3"></td><td class="num">${fmtNum(supplySum)}</td><td class="num">${fmtNum(vatSum)}</td></tr>
-      </tbody>
+      ${colgroup}
+      <thead><tr><th>No</th><th>품&nbsp;&nbsp;&nbsp;&nbsp;명</th><th>규격</th><th>수량</th><th>단가</th><th>공급가액</th><th>비고</th></tr></thead>
+      <tbody>${rowsHtml}${totalRow}</tbody>
     </table>`;
 
   const bank = escapeHtml(supplier.bank);
