@@ -517,6 +517,17 @@ function buildDocNode(docType, customer, items, unpaid, now) {
   }).join('');
   const total = supplySum + vatSum;
 
+  // 원본 엑셀처럼 표를 고정 행수까지 채움: 실제품목 다음 "- 이하 공백 -" 한 줄,
+  // 그 뒤로는 수량/단가만 "-"로 채운 빈 줄들 (거래명세서/견적서는 21행, 납품확인서는 15행)
+  const maxRows = docType === 'confirm' ? 15 : 21;
+  let fillerHtml = '';
+  if (items.length < maxRows) {
+    fillerHtml += `<tr><td></td><td class="tname">- 이하 공백 -</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+    for (let i = items.length + 1; i < maxRows; i++) {
+      fillerHtml += `<tr><td></td><td></td><td></td><td class="dash">-</td><td class="dash">-</td><td></td><td></td></tr>`;
+    }
+  }
+
   const stampImg = `<img class="doc-stamp" src="${STAMP_DATA_URL}" style="left:6px;top:-9px">`;
 
   // 오른쪽 "공급자" 박스 — 원본 엑셀 행높이 비율(20.25:20.25:20.25:32.25:20.25:20.25pt = 1:1:1:1.6:1:1)
@@ -563,24 +574,26 @@ function buildDocNode(docType, customer, items, unpaid, now) {
     <table class="doc-table">
       ${colgroup}
       <thead><tr><th>No</th><th>품&nbsp;&nbsp;&nbsp;&nbsp;명</th><th>규격</th><th>수량</th><th>단가</th><th>공급가액</th><th>비고</th></tr></thead>
-      <tbody>${rowsHtml}${totalRow}</tbody>
+      <tbody>${rowsHtml}${fillerHtml}${totalRow}</tbody>
     </table>`;
 
   const bank = escapeHtml(supplier.bank);
-  let footerHtml = '';
+  let noticeBody = '';
+  let signHtml = '';
   if (docType === 'invoice') {
-    footerHtml = `<div class="doc-footer"><b>* 기타사항</b><br>1. 입금계좌: ${bank}<br>2. 미수금: ${escapeHtml(unpaid || '')}</div>`;
+    noticeBody = `1. 입금계좌: ${bank}<br>2. 미수금: ${escapeHtml(unpaid || '')}`;
   } else if (docType === 'quote') {
-    footerHtml = `<div class="doc-footer"><b>* 기타사항</b><br>1. 입금계좌: ${bank}<br>2. 완료일자 : 착수후 40일<br>3. 현금영수증 발행 견적</div>`;
+    noticeBody = `1. 입금계좌: ${bank}<br>2. 완료일자 : 착수후 40일<br>3. 현금영수증 발행 견적`;
   } else if (docType === 'confirm') {
-    footerHtml = `<div class="doc-footer" style="text-align:center;margin-top:20px">상기 물품을 납품 하였기에 납품확인서를 제출합니다.<br><br>${formatDateKorean(now)}</div>
-      <div class="doc-sign-row">인수자 : ${escapeHtml(customer.name)} &nbsp;&nbsp;(인)</div>
-      <div class="doc-footer" style="margin-top:24px"><b>* 기타사항</b><br>입금계좌: ${bank}</div>`;
+    noticeBody = `입금계좌: ${bank}`;
+    signHtml = `<div class="doc-footer-text">상기 물품을 납품 하였기에 납품확인서를 제출합니다.<br><br>${formatDateKorean(now)}</div>
+      <div class="doc-sign-row">인수자 : <span class="blank"></span> ${escapeHtml(customer.name)}&nbsp;&nbsp;(인)</div>`;
   }
+  const noticeHtml = `<div class="doc-notice"><div class="doc-notice-label">*기타 사항</div><div class="doc-notice-body">${noticeBody}</div></div>`;
 
   const wrap = document.createElement('div');
   wrap.className = 'doc-page';
-  wrap.innerHTML = `<div class="doc-title">${titleMap[docType]}</div><div class="doc-toprow"><div class="doc-leftbox">${leftRows}</div>${rightBox}</div>${tableHtml}${footerHtml}`;
+  wrap.innerHTML = `<div class="doc-frame"><div class="doc-title">${titleMap[docType]}</div><div class="doc-toprow"><div class="doc-leftbox">${leftRows}</div>${rightBox}</div>${tableHtml}</div>${signHtml}${noticeHtml}`;
   return wrap;
 }
 
