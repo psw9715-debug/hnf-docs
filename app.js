@@ -185,6 +185,7 @@ let googleConfig = { clientId: '' };
 let currentCustomerId = null;
 let currentItems = [];
 let selectedDocTypes = new Set();
+let vatEnabled = false;
 
 let googleAccessToken = null;
 let googleTokenExpiresAt = 0;
@@ -368,7 +369,15 @@ function openDocScreen(customerId) {
   loadLastItems(true);
   document.getElementById('doc-unpaid').value = '';
   document.getElementById('doc-status-area').innerHTML = '';
+  vatEnabled = false;
+  document.getElementById('vat-toggle').classList.remove('on');
   showScreen('screen-doc');
+}
+
+function toggleVat() {
+  vatEnabled = !vatEnabled;
+  document.getElementById('vat-toggle').classList.toggle('on', vatEnabled);
+  renderItemList();
 }
 
 function renderDocTypeChips() {
@@ -423,7 +432,7 @@ function loadLastItems(silent) {
 function calcRow(it) {
   const qty = Number(it.qty) || 0, price = Number(it.price) || 0;
   const supply = qty * price;
-  const vat = Math.round(supply * 0.1);
+  const vat = vatEnabled ? Math.round(supply * 0.1) : 0;
   return { qty, price, supply, vat };
 }
 
@@ -447,7 +456,7 @@ function renderItemList() {
         <input placeholder="수량" inputmode="decimal" value="${escapeAttr(it.qty)}" oninput="updateItemField(${idx},'qty',this.value)">
         <input placeholder="단가" inputmode="decimal" value="${escapeAttr(it.price)}" oninput="updateItemField(${idx},'price',this.value)">
       </div>
-      <div class="item-amount">공급가액 ${fmtNum(r.supply)}원 · 부가세 ${fmtNum(r.vat)}원</div>
+      <div class="item-amount">공급가액 ${fmtNum(r.supply)}원${vatEnabled ? ' · 부가세 ' + fmtNum(r.vat) + '원' : ''}</div>
     </div>`;
   }).join('');
   updateTotalsDisplay();
@@ -456,8 +465,9 @@ function renderItemList() {
 function updateTotalsDisplay() {
   let supplySum = 0, vatSum = 0;
   currentItems.forEach(it => { const r = calcRow(it); supplySum += r.supply; vatSum += r.vat; });
-  document.getElementById('doc-total-display').textContent =
-    `공급가액 ${fmtNum(supplySum)}원 + 부가세 ${fmtNum(vatSum)}원 = 합계 ${fmtNum(supplySum + vatSum)}원`;
+  document.getElementById('doc-total-display').textContent = vatEnabled
+    ? `공급가액 ${fmtNum(supplySum)}원 + 부가세 ${fmtNum(vatSum)}원 = 합계 ${fmtNum(supplySum + vatSum)}원`
+    : `합계 ${fmtNum(supplySum)}원 (부가세 미적용)`;
 }
 
 function showDocStatus(kind, msg) {
@@ -480,7 +490,29 @@ function formatDateCompact(d) {
   const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
   return `${y}${m}${day}`;
 }
-function formatDateKorean(d) { return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`; }
+function formatDateKorean(d) {
+  const m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}년 ${m}월 ${day}일`;
+}
+// 사업자번호/계좌번호처럼 숫자-숫자 사이 하이픈에 원본 서식대로 공백을 넣어줌 ("772-88-02611" → "772 - 88 - 02611")
+function spaceDashes(s) { return String(s || '').replace(/(\d)-(?=\d)/g, '$1 - '); }
+// 계좌 라인 표시용: 하이픈 공백 + "예금주:" → "예금주 :" (원본 서식)
+function formatBankLine(s) { return spaceDashes(s).replace(/예금주\s*:/g, '예금주 :'); }
+
+/* 원본 엑셀 열너비(A~J, pt)로부터 계산한 비율. 상단 정보 박스는
+   왼쪽박스(A~E, 41.88%) + 간격(F, 4.90%) + 오른쪽박스(G~J, 53.22%)로 구성됨. */
+const RB_LABEL1 = 20.95, RB_VAL1_SINGLE = 79.05, RB_VAL1 = 27.10, RB_LABEL2 = 24.87, RB_VAL2 = 27.10;
+const LB_LABEL = 40.45, LB_VAL = 59.55;
+
+function boxRow(ratio, cellsHtml) {
+  return `<div class="doc-row" style="flex:${ratio} 1 0">${cellsHtml}</div>`;
+}
+function cellLabel(pct, text) {
+  return `<div class="doc-cell-label" style="flex:0 0 ${pct}%">${text}</div>`;
+}
+function cellVal(pct, html, extra) {
+  return `<div class="doc-cell-val${extra ? ' ' + extra : ''}" style="flex:0 0 ${pct}%">${html}</div>`;
+}
 
 function buildDocNode(docType, customer, items, unpaid, now) {
   const supplier = appData.supplier;
@@ -502,68 +534,93 @@ function buildDocNode(docType, customer, items, unpaid, now) {
   }).join('');
   const total = supplySum + vatSum;
 
-  const stampImg = `<img class="doc-stamp" src="${STAMP_DATA_URL}" style="left:258px;top:38px">`;
+  // 원본 엑셀처럼 표를 고정 행수까지 채움: 실제품목 다음 "- 이하 공백 -" 한 줄,
+  // 그 뒤로는 수량/단가만 "-"로 채운 빈 줄들 (거래명세서/견적서는 21행, 납품확인서는 15행)
+  const maxRows = docType === 'confirm' ? 15 : 21;
+  let fillerHtml = '';
+  if (items.length < maxRows) {
+    fillerHtml += `<tr><td></td><td class="tname">- 이하 공백 -</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+    for (let i = items.length + 1; i < maxRows; i++) {
+      fillerHtml += `<tr><td></td><td></td><td></td><td class="dash">-</td><td class="dash">-</td><td></td><td></td></tr>`;
+    }
+  }
 
+  const stampImg = `<img class="doc-stamp" src="${STAMP_DATA_URL}" style="left:8px;top:-7px">`;
+
+  // 오른쪽 "공급자" 박스 — 원본 엑셀 행높이 비율(20.25:20.25:20.25:32.25:20.25:20.25pt = 1:1:1:1.6:1:1)
   const rightBox = `
     <div class="doc-rightbox">
-      <div style="text-align:center;font-weight:800;font-size:13px;padding:6px 0;border-bottom:1px solid #333;background:#F2F0EC">공 급 자</div>
-      <div class="doc-row"><div class="doc-cell-label">사업자번호</div><div class="doc-cell-val">${escapeHtml(supplier.bizNo)}</div></div>
-      <div class="doc-row">
-        <div class="doc-cell-label">업체명</div><div class="doc-cell-val">${escapeHtml(supplier.name)}</div>
-        <div class="doc-cell-label" style="width:56px">대 표</div><div class="doc-cell-val">${escapeHtml(supplier.ceo)}</div>
-      </div>
-      <div class="doc-row"><div class="doc-cell-label">주소</div><div class="doc-cell-val small">${escapeHtml(supplier.address)}</div></div>
-      <div class="doc-row">
-        <div class="doc-cell-label">업태</div><div class="doc-cell-val small">${escapeHtml(supplier.bizType)}</div>
-        <div class="doc-cell-label" style="width:56px">종 목</div><div class="doc-cell-val small">${escapeHtml(supplier.bizItem)}</div>
-      </div>
-      <div class="doc-row">
-        <div class="doc-cell-label">전화</div><div class="doc-cell-val">${escapeHtml(supplier.phone)}</div>
-        <div class="doc-cell-label" style="width:56px">팩 스</div><div class="doc-cell-val">${escapeHtml(supplier.fax)}</div>
-      </div>
-      ${stampImg}
+      ${boxRow(1, `<div style="flex:1;text-align:center;font-weight:800;font-size:13px;background:#F2F0EC;display:flex;align-items:center;justify-content:center">공 급 자</div>`)}
+      ${boxRow(1, cellLabel(RB_LABEL1, '사업자번호') + cellVal(RB_VAL1_SINGLE, escapeHtml(spaceDashes(supplier.bizNo))))}
+      ${boxRow(1, cellLabel(RB_LABEL1, '업체명') + cellVal(RB_VAL1, escapeHtml(supplier.name)) + cellLabel(RB_LABEL2, '대 표') + cellVal(RB_VAL2, escapeHtml(supplier.ceo) + stampImg, 'relative'))}
+      ${boxRow(1.6, cellLabel(RB_LABEL1, '주소') + cellVal(RB_VAL1_SINGLE, escapeHtml(supplier.address), 'small'))}
+      ${boxRow(1, cellLabel(RB_LABEL1, '업태') + cellVal(RB_VAL1, escapeHtml(supplier.bizType), 'small') + cellLabel(RB_LABEL2, '종 목') + cellVal(RB_VAL2, escapeHtml(supplier.bizItem), 'small'))}
+      ${boxRow(1, cellLabel(RB_LABEL1, '전화') + cellVal(RB_VAL1, escapeHtml(supplier.phone)) + cellLabel(RB_LABEL2, '팩 스') + cellVal(RB_VAL2, escapeHtml(supplier.fax)))}
     </div>`;
 
+  // 담당자 연락처 — 이름/전화 한 줄 + 이메일 한 줄로 정리 (있는 것만 표시, 없으면 라벨만 남고 공란)
+  const contactParts = [];
+  if (customer.managerName || customer.managerPhone) {
+    contactParts.push(escapeHtml(customer.managerName || '') + (customer.managerPhone ? ' / ' + escapeHtml(customer.managerPhone) : ''));
+  }
+  if (customer.managerEmail) contactParts.push(escapeHtml(customer.managerEmail));
+  const contactHtml = contactParts.join('<br>');
+
+  // 왼쪽 박스 — 거래처의 사업자정보를 문서종류 상관없이 최대한 보여줌(주소/담당자/이메일 포함)
   let leftRows;
   if (docType === 'confirm') {
     leftRows = `
-      <div class="doc-row"><div class="doc-cell-label">거래처명</div><div class="doc-cell-val">${escapeHtml(customer.name)} 귀하</div></div>
-      <div class="doc-row"><div class="doc-cell-label">사업자번호</div><div class="doc-cell-val">${escapeHtml(customer.bizNo)}</div></div>
-      <div class="doc-row"><div class="doc-cell-label">주소</div><div class="doc-cell-val small">${escapeHtml(customer.address)}</div></div>
-      <div class="doc-row"><div class="doc-cell-label">대표자</div><div class="doc-cell-val">${escapeHtml(customer.ceo)}</div></div>
-      <div class="doc-row"><div class="doc-cell-label">담당자</div><div class="doc-cell-val">${escapeHtml(customer.managerName)}${customer.managerPhone ? ' / ' + escapeHtml(customer.managerPhone) : ''}</div></div>
+      ${boxRow(1, cellLabel(LB_LABEL, '거래처명') + cellVal(LB_VAL, escapeHtml(customer.name) + ' 귀하'))}
+      ${boxRow(1, cellLabel(LB_LABEL, '사업자번호') + cellVal(LB_VAL, escapeHtml(spaceDashes(customer.bizNo))))}
+      ${boxRow(1.6, cellLabel(LB_LABEL, '주소') + cellVal(LB_VAL, escapeHtml(customer.address), 'small'))}
+      ${boxRow(1, cellLabel(LB_LABEL, '대표자') + cellVal(LB_VAL, escapeHtml(customer.ceo)))}
+      ${boxRow(1.6, cellLabel(LB_LABEL, '담당자') + cellVal(LB_VAL, contactHtml, 'small'))}
     `;
   } else {
     leftRows = `
-      <div class="doc-row"><div class="doc-cell-label">발행일자</div><div class="doc-cell-val">${formatDateISO(now)}</div></div>
-      <div class="doc-row"><div class="doc-cell-label">거래처명</div><div class="doc-cell-val">${escapeHtml(customer.name)} 귀하</div></div>
-      <div class="doc-row"><div class="doc-cell-label">합계금액</div><div class="doc-cell-val" style="font-weight:800">${fmtNum(total)} 원</div></div>
+      ${boxRow(1, cellLabel(LB_LABEL, '발행일자') + cellVal(LB_VAL, formatDateISO(now)))}
+      ${boxRow(1, cellLabel(LB_LABEL, '거래처명') + cellVal(LB_VAL, escapeHtml(customer.name) + ' 귀하'))}
+      ${boxRow(1, cellLabel(LB_LABEL, '사업자번호') + cellVal(LB_VAL, escapeHtml(spaceDashes(customer.bizNo))))}
+      ${boxRow(1.4, cellLabel(LB_LABEL, '주소') + cellVal(LB_VAL, escapeHtml(customer.address), 'small'))}
+      ${boxRow(1.6, cellLabel(LB_LABEL, '담당자') + cellVal(LB_VAL, contactHtml, 'small'))}
+      ${boxRow(1.8, cellLabel(LB_LABEL, '합계금액') + cellVal(LB_VAL, '₩' + fmtNum(total), 'bold'))}
     `;
   }
 
+  // 품목표 — 원본 열너비 비율(No 4.5 / 품명 32.5 / 규격 9.8 / 수량 11.2 / 단가 14.4 / 공급가액 13.2 / 비고 14.4 %)
+  const colgroup = `<colgroup>
+    <col style="width:4.5%"><col style="width:32.5%"><col style="width:9.8%">
+    <col style="width:11.2%"><col style="width:14.4%"><col style="width:13.2%"><col style="width:14.4%">
+  </colgroup>`;
+
+  const totalRow = docType === 'confirm'
+    ? `<tr class="doc-total-row"><td colspan="3">합&nbsp;&nbsp;계</td><td></td><td colspan="2" class="num">${fmtNum(supplySum)}</td><td>원</td></tr>`
+    : `<tr class="doc-total-row"><td colspan="2">합&nbsp;&nbsp;계</td><td colspan="3"></td><td class="num">${fmtNum(supplySum)}</td><td class="num">${vatEnabled ? fmtNum(vatSum) : ''}</td></tr>`;
+
   const tableHtml = `
     <table class="doc-table">
-      <thead><tr><th style="width:32px">No</th><th>품명</th><th style="width:90px">규격</th><th style="width:56px">수량</th><th style="width:76px">단가</th><th style="width:90px">공급가액</th><th style="width:76px">비고(VAT)</th></tr></thead>
-      <tbody>${rowsHtml}
-        <tr class="doc-total-row"><td colspan="2">합&nbsp;&nbsp;계</td><td colspan="3"></td><td class="num">${fmtNum(supplySum)}</td><td class="num">${fmtNum(vatSum)}</td></tr>
-      </tbody>
+      ${colgroup}
+      <thead><tr><th>No</th><th>품&nbsp;&nbsp;&nbsp;&nbsp;명</th><th>규격</th><th>수량</th><th>단가</th><th>공급가액</th><th>비고</th></tr></thead>
+      <tbody>${rowsHtml}${fillerHtml}${totalRow}</tbody>
     </table>`;
 
-  const bank = escapeHtml(supplier.bank);
-  let footerHtml = '';
+  const bank = escapeHtml(formatBankLine(supplier.bank));
+  let noticeBody = '';
+  let signHtml = '';
   if (docType === 'invoice') {
-    footerHtml = `<div class="doc-footer"><b>* 기타사항</b><br>1. 입금계좌: ${bank}<br>2. 미수금: ${escapeHtml(unpaid || '')}</div>`;
+    noticeBody = `1. 입금계좌: ${bank}<br>2. 미수금: ${escapeHtml(unpaid || '')}`;
   } else if (docType === 'quote') {
-    footerHtml = `<div class="doc-footer"><b>* 기타사항</b><br>1. 입금계좌: ${bank}<br>2. 완료일자 : 착수후 40일<br>3. 현금영수증 발행 견적</div>`;
+    noticeBody = `1. 입금계좌: ${bank}<br>2. 완료일자 : 착수후 40일<br>3. 현금영수증 발행 견적`;
   } else if (docType === 'confirm') {
-    footerHtml = `<div class="doc-footer" style="text-align:center;margin-top:20px">상기 물품을 납품 하였기에 납품확인서를 제출합니다.<br><br>${formatDateKorean(now)}</div>
-      <div class="doc-sign-row">인수자 : ${escapeHtml(customer.name)} &nbsp;&nbsp;(인)</div>
-      <div class="doc-footer" style="margin-top:24px"><b>* 기타사항</b><br>입금계좌: ${bank}</div>`;
+    noticeBody = `입금계좌: ${bank}`;
+    signHtml = `<div class="doc-footer-text">상기 물품을 납품 하였기에 납품확인서를 제출합니다.<br><br>${formatDateKorean(now)}</div>
+      <div class="doc-sign-row">인수자 : <span class="blank"></span> ${escapeHtml(customer.name)}&nbsp;&nbsp;(인)</div>`;
   }
+  const noticeHtml = `<div class="doc-notice"><div class="doc-notice-label">*기타 사항</div><div class="doc-notice-body">${noticeBody}</div></div>`;
 
   const wrap = document.createElement('div');
   wrap.className = 'doc-page';
-  wrap.innerHTML = `<div class="doc-title">${titleMap[docType]}</div><div class="doc-toprow"><div class="doc-leftbox">${leftRows}</div>${rightBox}</div>${tableHtml}${footerHtml}`;
+  wrap.innerHTML = `<div class="doc-frame"><div class="doc-title">${titleMap[docType]}</div><div class="doc-toprow"><div class="doc-leftbox">${leftRows}</div>${rightBox}</div>${tableHtml}</div>${signHtml}${noticeHtml}`;
   return wrap;
 }
 

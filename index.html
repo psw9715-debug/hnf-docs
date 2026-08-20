@@ -115,26 +115,33 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
 /* ---- offscreen document render target ---- */
 #doc-render-root { position: fixed; left: -99999px; top: 0; z-index: -1; }
 .doc-page { width: 794px; background: #fff; color: #111; font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif; padding: 34px 40px; box-sizing: border-box; }
-.doc-title { text-align: center; font-size: 26px; font-weight: 900; letter-spacing: 6px; margin-bottom: 18px; }
-.doc-toprow { display: flex; gap: 10px; margin-bottom: 4px; }
-.doc-leftbox, .doc-rightbox { border: 1.5px solid #333; }
-.doc-leftbox { flex: 1; }
-.doc-rightbox { flex: 1; position: relative; }
-.doc-row { display: flex; border-bottom: 1px solid #999; }
+.doc-frame { border: 2.5px solid #000; }
+.doc-title { text-align: center; font-size: 24px; font-weight: 900; letter-spacing: 6px; padding: 14px 0 10px; }
+.doc-toprow { display: flex; height: 205px; border-top: 1.5px solid #000; }
+.doc-leftbox, .doc-rightbox { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; overflow: hidden; }
+.doc-leftbox { flex: 0 0 41.88%; margin-right: 10px; border-right: 1.5px solid #000; }
+.doc-rightbox { flex: 1 1 auto; }
+.doc-row { display: flex; border-bottom: 1px solid #999; box-sizing: border-box; min-height: 0; }
 .doc-row:last-child { border-bottom: none; }
-.doc-cell-label { width: 88px; flex-shrink: 0; background: #F2F0EC; padding: 7px 8px; font-size: 12px; font-weight: 700; border-right: 1px solid #999; display: flex; align-items: center; }
-.doc-cell-val { flex: 1; padding: 7px 10px; font-size: 12px; font-weight: 600; display: flex; align-items: center; word-break: break-all; }
-.doc-cell-val.small { font-size: 11px; }
-.doc-stamp { position: absolute; width: 62px; height: auto; opacity: 0.92; }
-.doc-table { width: 100%; border-collapse: collapse; margin-top: 14px; }
-.doc-table th { background: #E9E6DF; border: 1px solid #333; padding: 8px 4px; font-size: 12px; font-weight: 800; }
-.doc-table td { border: 1px solid #999; padding: 7px 4px; font-size: 12px; text-align: center; font-weight: 600; }
+.doc-cell-label { flex-shrink: 0; background: #F2F0EC; padding: 4px 8px; font-size: 12px; font-weight: 700; border-right: 1px solid #999; display: flex; align-items: center; box-sizing: border-box; }
+.doc-cell-val { flex-shrink: 0; padding: 4px 10px; font-size: 12px; font-weight: 600; display: flex; align-items: center; word-break: break-all; box-sizing: border-box; position: relative; }
+.doc-cell-val.small { font-size: 11px; line-height: 1.3; }
+.doc-cell-val.bold { font-weight: 800; font-size: 13px; }
+.doc-stamp { position: absolute; width: 36px; height: auto; opacity: 0.92; }
+.doc-table { width: 100%; border-collapse: collapse; table-layout: fixed; border-top: 1.5px solid #000; }
+.doc-table th { background: #E9E6DF; border: 1px solid #999; padding: 8px 4px; font-size: 12px; font-weight: 800; }
+.doc-table td { border: 1px solid #999; padding: 6px 4px; font-size: 12px; text-align: center; font-weight: 600; word-break: break-word; height: 22px; }
 .doc-table td.tname { text-align: left; padding-left: 8px; }
 .doc-table td.num { text-align: right; padding-right: 8px; }
+.doc-table td.dash { color: #888; }
 .doc-total-row td { background: #F2F0EC; font-weight: 800; font-size: 13px; }
 .doc-footer { margin-top: 16px; font-size: 12px; font-weight: 500; line-height: 2; }
-.doc-footer b { font-weight: 800; }
-.doc-sign-row { margin-top: 22px; text-align: right; font-size: 13px; font-weight: 700; }
+.doc-footer-text { text-align: center; font-size: 12.5px; font-weight: 700; margin-top: 22px; line-height: 2; }
+.doc-sign-row { margin-top: 26px; display: flex; justify-content: flex-end; align-items: baseline; gap: 10px; font-size: 13px; font-weight: 700; }
+.doc-sign-row .blank { display: inline-block; width: 130px; border-bottom: 1px solid #333; }
+.doc-notice { border: 1.3px solid #333; margin-top: 18px; }
+.doc-notice-label { padding: 4px 10px; font-size: 11px; font-weight: 800; border-bottom: 1.3px solid #333; }
+.doc-notice-body { padding: 10px 14px; font-size: 12px; font-weight: 500; line-height: 1.9; }
 </style>
 </head>
 <body>
@@ -293,7 +300,16 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
     </div>
 
     <div class="card">
-      <div class="card-title">합계</div>
+      <div class="toggle-row" style="border-bottom:none;padding-top:0">
+        <div>
+          <div class="toggle-label">부가세 적용</div>
+          <div class="toggle-sub">켜면 공급가액의 10%를 부가세로 계산해 합계에 더해요</div>
+        </div>
+        <button class="toggle" id="vat-toggle" onclick="toggleVat()">
+          <div class="toggle-knob"></div>
+        </button>
+      </div>
+      <div class="card-title" style="margin-top:14px">합계</div>
       <div class="info-text" id="doc-total-display" style="font-size:15px;color:var(--text);font-weight:800"></div>
       <div class="form-group" style="margin-top:14px;margin-bottom:0">
         <label class="form-label">미수금 (거래명세표, 선택)</label>
