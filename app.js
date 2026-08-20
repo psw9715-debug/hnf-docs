@@ -551,22 +551,32 @@ function buildDocNode(docType, customer, items, unpaid, now) {
       ${boxRow(1, cellLabel(RB_LABEL1, '전화') + cellVal(RB_VAL1, escapeHtml(supplier.phone)) + cellLabel(RB_LABEL2, '팩 스') + cellVal(RB_VAL2, escapeHtml(supplier.fax)))}
     </div>`;
 
-  // 왼쪽 박스 — 문서종류별로 원본 엑셀 병합 구조가 다름
+  // 담당자 연락처 — 이름/전화 한 줄 + 이메일 한 줄로 정리 (있는 것만 표시, 없으면 라벨만 남고 공란)
+  const contactParts = [];
+  if (customer.managerName || customer.managerPhone) {
+    contactParts.push(escapeHtml(customer.managerName || '') + (customer.managerPhone ? ' / ' + escapeHtml(customer.managerPhone) : ''));
+  }
+  if (customer.managerEmail) contactParts.push(escapeHtml(customer.managerEmail));
+  const contactHtml = contactParts.join('<br>');
+
+  // 왼쪽 박스 — 거래처의 사업자정보를 문서종류 상관없이 최대한 보여줌(주소/담당자/이메일 포함)
   let leftRows;
   if (docType === 'confirm') {
     leftRows = `
       ${boxRow(1, cellLabel(LB_LABEL, '거래처명') + cellVal(LB_VAL, escapeHtml(customer.name) + ' 귀하'))}
       ${boxRow(1, cellLabel(LB_LABEL, '사업자번호') + cellVal(LB_VAL, escapeHtml(customer.bizNo)))}
-      ${boxRow(2.6, cellLabel(LB_LABEL, '주소') + cellVal(LB_VAL, escapeHtml(customer.address), 'small'))}
+      ${boxRow(1.6, cellLabel(LB_LABEL, '주소') + cellVal(LB_VAL, escapeHtml(customer.address), 'small'))}
       ${boxRow(1, cellLabel(LB_LABEL, '대표자') + cellVal(LB_VAL, escapeHtml(customer.ceo)))}
-      ${boxRow(1, cellLabel(LB_LABEL, '담당자') + cellVal(LB_VAL, escapeHtml(customer.managerName) + (customer.managerPhone ? ' / ' + escapeHtml(customer.managerPhone) : '')))}
+      ${boxRow(1.6, cellLabel(LB_LABEL, '담당자') + cellVal(LB_VAL, contactHtml, 'small'))}
     `;
   } else {
     leftRows = `
       ${boxRow(1, cellLabel(LB_LABEL, '발행일자') + cellVal(LB_VAL, formatDateISO(now)))}
       ${boxRow(1, cellLabel(LB_LABEL, '거래처명') + cellVal(LB_VAL, escapeHtml(customer.name) + ' 귀하'))}
-      ${boxRow(1.6, cellLabel(LB_LABEL, '담당자') + cellVal(LB_VAL, escapeHtml(customer.managerName || '') + (customer.managerPhone ? ' / ' + escapeHtml(customer.managerPhone) : '')))}
-      ${boxRow(3, cellLabel(LB_LABEL, '합계금액') + cellVal(LB_VAL, '₩' + fmtNum(total), 'bold'))}
+      ${boxRow(1, cellLabel(LB_LABEL, '사업자번호') + cellVal(LB_VAL, escapeHtml(customer.bizNo)))}
+      ${boxRow(1.4, cellLabel(LB_LABEL, '주소') + cellVal(LB_VAL, escapeHtml(customer.address), 'small'))}
+      ${boxRow(1.6, cellLabel(LB_LABEL, '담당자') + cellVal(LB_VAL, contactHtml, 'small'))}
+      ${boxRow(1.8, cellLabel(LB_LABEL, '합계금액') + cellVal(LB_VAL, '₩' + fmtNum(total), 'bold'))}
     `;
   }
 
