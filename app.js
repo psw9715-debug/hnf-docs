@@ -930,6 +930,26 @@ function openHistoryLink(link) {
 /* ============================================================
    설정 화면
    ============================================================ */
+// 사파리(특히 홈화면 추가 앱)가 index.html/app.js를 오래 캐싱해서 배포한
+// 최신 코드가 안 보일 때, 캐시/서비스워커를 비우고 쿼리스트링을 새로 붙여
+// 강제로 새 버전을 받아오게 함
+async function fetchLatestVersion() {
+  try {
+    if (window.caches && caches.keys) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) { console.error(e); }
+  const url = new URL(location.href);
+  url.hash = '';
+  url.search = 'v=' + Date.now();
+  location.replace(url.toString());
+}
+
 function renderSettings() {
   document.getElementById('google-client-id').value = googleConfig.clientId || '';
   renderGoogleAuthStatus();
