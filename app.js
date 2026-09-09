@@ -7,7 +7,7 @@ const STORAGE_KEY = 'hnf_docs_data';
 const SYNC_KEY = 'hnf_docs_sync';
 const GOOGLE_KEY = 'hnf_docs_google';
 const GIST_FILENAME = 'hnf_docs_data.json';
-const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/gmail.send';
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/drive';
 const GITHUB_OWNER = 'psw9715-debug';
 const GITHUB_REPO = 'hnf-docs';
 const GITHUB_BRANCH = 'main';
@@ -135,7 +135,8 @@ const SUPPLIER_DEFAULT = {
   bizItem: '홈패션,전자상거래',
   phone: '010-7447-0314',
   fax: '',
-  bank: '농협 302-1599-6808-11 / 예금주: 김수현'
+  bank: '농협 302-1599-6808-11 / 예금주: 김수현',
+  rootFolderId: '18Up_qR8xqL8yPWaH4WFAYzMrh_u_Ojak'
 };
 
 const CUSTOMERS_SEED = [
@@ -148,7 +149,8 @@ const CUSTOMERS_SEED = [
     managerName: '이승운',
     managerPhone: '010-9273-9485',
     managerEmail: '',
-    honorific: '이승운 팀장님'
+    honorific: '이승운 팀장님',
+    driveFolderId: '1175trPZQxXMGps5Yrkci-f0SMsPPTrNO'
   },
   {
     id: 'c_loelize',
@@ -159,7 +161,8 @@ const CUSTOMERS_SEED = [
     managerName: '',
     managerPhone: '',
     managerEmail: '',
-    honorific: ''
+    honorific: '',
+    driveFolderId: '1n_VySswT5VBTAz8CpsXIUOG_OB_vOEsQ'
   },
   {
     id: 'c_inart',
@@ -170,7 +173,8 @@ const CUSTOMERS_SEED = [
     managerName: '',
     managerPhone: '',
     managerEmail: '',
-    honorific: ''
+    honorific: '',
+    driveFolderId: '1QTLgxm073VR_jVftbluoJIHTjqF7I1Bv'
   }
 ];
 
@@ -305,6 +309,7 @@ function goToCustomerEdit(id) {
   document.getElementById('ce-manager-phone').value = c ? c.managerPhone : '';
   document.getElementById('ce-manager-email').value = c ? c.managerEmail : '';
   document.getElementById('ce-honorific').value = c ? c.honorific : '';
+  document.getElementById('ce-drive-folder').value = c ? (c.driveFolderId || '') : '';
   document.getElementById('ce-delete-wrap').style.display = c ? '' : 'none';
   showScreen('screen-customer-edit');
 }
@@ -320,7 +325,8 @@ function saveCustomer() {
     managerName: document.getElementById('ce-manager-name').value.trim(),
     managerPhone: document.getElementById('ce-manager-phone').value.trim(),
     managerEmail: document.getElementById('ce-manager-email').value.trim(),
-    honorific: document.getElementById('ce-honorific').value.trim()
+    honorific: document.getElementById('ce-honorific').value.trim(),
+    driveFolderId: document.getElementById('ce-drive-folder').value.trim()
   };
   if (editingCustomerId) {
     const c = getCustomerById(editingCustomerId);
@@ -367,6 +373,7 @@ function openDocScreen(customerId) {
   currentItems = [];
   loadLastItems(true);
   document.getElementById('doc-unpaid').value = '';
+  document.getElementById('doc-comment').value = '';
   document.getElementById('doc-status-area').innerHTML = '';
   document.getElementById('doc-send-date').value = formatDateISO(new Date());
   vatEnabled = false;
@@ -809,6 +816,36 @@ function blobToBase64(blob) {
   });
 }
 
+async function ensureCustomerFolder(customer, token) {
+  if (customer.driveFolderId) return customer.driveFolderId;
+  if (!appData.supplier.rootFolderId) throw new Error('설정에서 구글드라이브 상위 폴더 ID를 입력해주세요.');
+  const json = await apiFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: customer.name, mimeType: 'application/vnd.google-apps.folder', parents: [appData.supplier.rootFolderId] })
+  });
+  customer.driveFolderId = json.id;
+  saveData();
+  return json.id;
+}
+
+async function uploadFileToDrive(folderId, filename, blob, token) {
+  const base64Data = await blobToBase64(blob);
+  const boundary = '-------hnf' + Date.now();
+  const delimiter = '\r\n--' + boundary + '\r\n';
+  const closeDelim = '\r\n--' + boundary + '--';
+  const metadata = { name: filename, parents: [folderId], mimeType: 'application/pdf' };
+  const body =
+    delimiter + 'Content-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(metadata) +
+    delimiter + 'Content-Type: application/pdf\r\nContent-Transfer-Encoding: base64\r\n\r\n' + base64Data +
+    closeDelim;
+  return apiFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'multipart/related; boundary="' + boundary + '"' },
+    body
+  });
+}
+
 function base64UrlEncode(str) {
   return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
@@ -845,7 +882,8 @@ async function sendGmail(to, subject, bodyText, attachments, token) {
 }
 
 /* ============================================================
-   PDF 생성 (발송과 분리 — 여기선 네트워크 호출 없이 PDF만 만듦)
+   PDF 생성 — 만들자마자 GitHub + 구글드라이브에 바로 백업까지 함
+   (발송 단계에서는 이미 백업된 파일을 첨부만 해서 보냄)
    ============================================================ */
 function parseDocDate() {
   const v = document.getElementById('doc-send-date').value;
@@ -854,16 +892,20 @@ function parseDocDate() {
   return new Date(y, m - 1, d);
 }
 
-async function generateDocsOnly() {
+async function generateDocsOnly(isRetry) {
   const customer = getCustomerById(currentCustomerId);
   if (!customer) return;
   if (selectedDocTypes.size === 0) { showDocStatus('warn', '문서 종류를 1개 이상 선택해주세요.'); return; }
   const items = currentItems.filter(it => it.name && it.name.trim());
   if (items.length === 0) { showDocStatus('warn', '품목을 1개 이상 입력해주세요.'); return; }
+  if (!googleConfig.clientId) { showDocStatus('warn', '설정에서 구글 OAuth 클라이언트 ID를 먼저 등록해주세요 (드라이브 백업에 필요해요).'); return; }
 
   const genBtn = document.getElementById('doc-generate-btn');
   genBtn.disabled = true;
   try {
+    showDocStatus('info', '구글 로그인 확인 중...');
+    const token = await ensureValidToken();
+
     showDocStatus('info', 'PDF 생성 중...');
     const docDate = parseDocDate();
     const fileDate = formatDateCompact(docDate);
@@ -875,13 +917,33 @@ async function generateDocsOnly() {
       const filename = `${fileDate}_${customer.name}_${DOC_LABELS[dt]}.pdf`;
       docs.push({ docType: dt, blob, filename });
     }
+
+    showDocStatus('info', 'GitHub에 백업 중...');
+    for (const d of docs) {
+      d.fileUrl = await uploadPdfToGithub(customer, d.filename, d.blob);
+    }
+
+    showDocStatus('info', '구글드라이브에 백업 중...');
+    const folderId = await ensureCustomerFolder(customer, token);
+    for (const d of docs) {
+      const up = await uploadFileToDrive(folderId, d.filename, d.blob, token);
+      d.driveLink = up.webViewLink;
+      d.driveFileId = up.id;
+    }
+
     currentGeneratedDocs = docs;
     currentDocSignature = computeDocSignature();
     updateSendBtnState();
 
-    showDocStatus('success', `✅ PDF 생성 완료 — ${docs.map(d => d.filename).join(', ')}`);
+    showDocStatus('success', `✅ PDF 생성 + 백업 완료 — ${docs.map(d => d.filename).join(', ')}`);
   } catch (err) {
     console.error(err);
+    if (err && err.status === 401 && !isRetry) {
+      googleAccessToken = null;
+      showDocStatus('warn', '로그인이 만료되어 다시 로그인합니다...');
+      genBtn.disabled = false;
+      return generateDocsOnly(true);
+    }
     showDocStatus('danger', '생성 오류: ' + (err && err.message ? err.message : String(err)));
   } finally {
     genBtn.disabled = false;
@@ -889,7 +951,7 @@ async function generateDocsOnly() {
 }
 
 /* ============================================================
-   발송 (이미 생성된 PDF를 GitHub에 백업 + 이메일로 전송)
+   발송 — 이미 생성/백업된 PDF를 그대로 첨부해서 이메일만 보냄
    ============================================================ */
 async function sendGeneratedDocs(isRetry) {
   const customer = getCustomerById(currentCustomerId);
@@ -908,15 +970,13 @@ async function sendGeneratedDocs(isRetry) {
     const token = await ensureValidToken();
     const docs = currentGeneratedDocs;
 
-    showDocStatus('info', 'GitHub에 백업 중...');
-    for (const d of docs) {
-      d.fileUrl = await uploadPdfToGithub(customer, d.filename, d.blob);
-    }
-
     showDocStatus('info', '이메일 발송 중...');
-    const greeting = customer.honorific ? customer.honorific : (customer.name + ' 담당자');
+    const greeting = customer.honorific ? customer.honorific : (customer.name + ' 담당자님');
     const subject = docs.map(d => d.filename.replace(/\.pdf$/, '')).join(', ');
-    const bodyText = `안녕하세요 ${greeting}님,\n\n${docs.map(d => DOC_LABELS[d.docType]).join(', ')} 첨부해드립니다.\n감사합니다.\n\n혀니네홈패션 드림`;
+    const extraComment = (document.getElementById('doc-comment').value || '').trim();
+    let bodyText = `안녕하세요 ${greeting},\n\n${docs.map(d => DOC_LABELS[d.docType]).join(', ')} 첨부해드립니다.`;
+    if (extraComment) bodyText += `\n\n${extraComment}`;
+    bodyText += `\n\n감사합니다.\n\n혀니네홈패션 드림`;
     const attachments = [];
     for (const d of docs) attachments.push({ filename: d.filename, base64: await blobToBase64(d.blob) });
     await sendGmail(customer.managerEmail, subject, bodyText, attachments, token);
@@ -934,6 +994,8 @@ async function sendGeneratedDocs(isRetry) {
         docType: d.docType,
         fileName: d.filename,
         fileUrl: d.fileUrl,
+        driveLink: d.driveLink,
+        comment: extraComment,
         sender: 'suhyunfabric'
       });
     });
@@ -981,9 +1043,9 @@ async function resendHistoryItem(sendId, isRetry) {
     const blob = await res.blob();
     const base64 = await blobToBase64(blob);
 
-    const greeting = customer.honorific ? customer.honorific : (customer.name + ' 담당자');
+    const greeting = customer.honorific ? customer.honorific : (customer.name + ' 담당자님');
     const subject = record.fileName.replace(/\.pdf$/, '') + ' (재발송)';
-    const bodyText = `안녕하세요 ${greeting}님,\n\n${DOC_LABELS[record.docType] || record.docType} 다시 첨부해드립니다.\n감사합니다.\n\n혀니네홈패션 드림`;
+    const bodyText = `안녕하세요 ${greeting},\n\n${DOC_LABELS[record.docType] || record.docType} 다시 첨부해드립니다.\n감사합니다.\n\n혀니네홈패션 드림`;
     await sendGmail(customer.managerEmail, subject, bodyText, [{ filename: record.fileName, base64 }], token);
 
     appData.sends.unshift({
@@ -994,6 +1056,7 @@ async function resendHistoryItem(sendId, isRetry) {
       docType: record.docType,
       fileName: record.fileName,
       fileUrl: record.fileUrl,
+      driveLink: record.driveLink,
       sender: 'suhyunfabric',
       resendOf: record.id
     });
@@ -1037,7 +1100,7 @@ function renderHistory() {
     const c = getCustomerById(s.customerId);
     const d = new Date(s.date);
     return `
-    <div class="history-item" onclick="openHistoryLink('${s.fileUrl || ''}')">
+    <div class="history-item" onclick="openHistoryLink('${s.driveLink || s.fileUrl || ''}')">
       <div class="history-date">${formatDateISO(d)}${s.resendOf ? ' <span class="history-resend-tag">재발송</span>' : ''}</div>
       <div class="history-main">
         <div class="history-doctype">${escapeHtml(c ? c.name : '(삭제된 거래처)')} · ${DOC_LABELS[s.docType] || s.docType}</div>
@@ -1091,6 +1154,7 @@ function renderSettings() {
   document.getElementById('sup-phone').value = s.phone || '';
   document.getElementById('sup-fax').value = s.fax || '';
   document.getElementById('sup-bank').value = s.bank || '';
+  document.getElementById('sup-root-folder').value = s.rootFolderId || '';
   document.getElementById('github-token').value = syncConfig.token || '';
   const actionCard = document.getElementById('sync-action-card');
   if (syncConfig.token) {
@@ -1115,6 +1179,7 @@ function saveSupplierInfo() {
   appData.supplier.phone = document.getElementById('sup-phone').value.trim();
   appData.supplier.fax = document.getElementById('sup-fax').value.trim();
   appData.supplier.bank = document.getElementById('sup-bank').value.trim();
+  appData.supplier.rootFolderId = document.getElementById('sup-root-folder').value.trim();
   saveData();
   maybeAutoSync();
   alert('저장되었어요');
@@ -1125,8 +1190,8 @@ function showGoogleSetupGuide() {
     '구글 클라우드 OAuth 클라이언트 발급 방법 (suhyunfabric@gmail.com으로 로그인 후 진행)\n\n' +
     '1. console.cloud.google.com 접속 후 suhyunfabric@gmail.com으로 로그인\n' +
     '2. 상단 "프로젝트 선택" → "새 프로젝트" → 이름 입력(예: hnf-docs) → 만들기\n' +
-    '3. 좌측 메뉴 "API 및 서비스" → "라이브러리"에서 검색해 "사용 설정":\n' +
-    '   - Gmail API\n' +
+    '3. 좌측 메뉴 "API 및 서비스" → "라이브러리"에서 다음 2개를 각각 검색해 "사용 설정":\n' +
+    '   - Gmail API\n   - Google Drive API\n' +
     '4. "API 및 서비스" → "OAuth 동의화면"\n' +
     '   - User Type: 외부 선택 → 만들기\n' +
     '   - 앱 이름/지원 이메일 등 입력 (테스트 단계로 충분, 게시 필요 없음)\n' +
@@ -1138,7 +1203,8 @@ function showGoogleSetupGuide() {
     '     예) https://psw9715-debug.github.io\n' +
     '   - 만들기 → 발급된 "클라이언트 ID" 복사\n' +
     '6. 이 화면의 "Google OAuth 클라이언트 ID"란에 붙여넣고 저장\n\n' +
-    '⚠️ 테스트 모드 앱은 suhyunfabric@gmail.com처럼 테스트 사용자로 등록된 계정만 로그인할 수 있어요.'
+    '⚠️ 테스트 모드 앱은 suhyunfabric@gmail.com처럼 테스트 사용자로 등록된 계정만 로그인할 수 있어요.\n' +
+    '⚠️ 이 앱은 기존 폴더에 파일을 쓰기 위해 전체 Drive 권한(전체 파일 접근)을 요청합니다 — 테스트 모드에서는 "확인되지 않은 앱" 경고가 뜰 수 있어요. "고급"→"이동(안전하지 않음)"을 눌러 진행하면 됩니다 (본인 계정만 사용하는 테스트 앱이라 안전합니다).'
   );
 }
 
