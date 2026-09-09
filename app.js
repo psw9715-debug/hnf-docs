@@ -7,7 +7,10 @@ const STORAGE_KEY = 'hnf_docs_data';
 const SYNC_KEY = 'hnf_docs_sync';
 const GOOGLE_KEY = 'hnf_docs_google';
 const GIST_FILENAME = 'hnf_docs_data.json';
-const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/drive';
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/gmail.send';
+const GITHUB_OWNER = 'psw9715-debug';
+const GITHUB_REPO = 'hnf-docs';
+const GITHUB_BRANCH = 'main';
 
 const DOC_LABELS = { invoice: '거래명세표', confirm: '납품확인서', quote: '견적서' };
 
@@ -132,8 +135,7 @@ const SUPPLIER_DEFAULT = {
   bizItem: '홈패션,전자상거래',
   phone: '010-7447-0314',
   fax: '',
-  bank: '농협 302-1599-6808-11 / 예금주: 김수현',
-  rootFolderId: '18Up_qR8xqL8yPWaH4WFAYzMrh_u_Ojak'
+  bank: '농협 302-1599-6808-11 / 예금주: 김수현'
 };
 
 const CUSTOMERS_SEED = [
@@ -146,8 +148,7 @@ const CUSTOMERS_SEED = [
     managerName: '이승운',
     managerPhone: '010-9273-9485',
     managerEmail: '',
-    honorific: '이승운 팀장님',
-    driveFolderId: '1175trPZQxXMGps5Yrkci-f0SMsPPTrNO'
+    honorific: '이승운 팀장님'
   },
   {
     id: 'c_loelize',
@@ -158,8 +159,7 @@ const CUSTOMERS_SEED = [
     managerName: '',
     managerPhone: '',
     managerEmail: '',
-    honorific: '',
-    driveFolderId: '1n_VySswT5VBTAz8CpsXIUOG_OB_vOEsQ'
+    honorific: ''
   },
   {
     id: 'c_inart',
@@ -170,8 +170,7 @@ const CUSTOMERS_SEED = [
     managerName: '',
     managerPhone: '',
     managerEmail: '',
-    honorific: '',
-    driveFolderId: '1QTLgxm073VR_jVftbluoJIHTjqF7I1Bv'
+    honorific: ''
   }
 ];
 
@@ -180,12 +179,14 @@ const CUSTOMERS_SEED = [
    ============================================================ */
 let appData = null;
 let syncConfig = { token: '', gistId: '', autoSync: false };
-let googleConfig = { clientId: '' };
+let googleConfig = { clientId: '', hasConsented: false };
 
 let currentCustomerId = null;
 let currentItems = [];
 let selectedDocTypes = new Set();
 let vatEnabled = false;
+let currentGeneratedDocs = [];   // [{docType, blob, filename}] — PDF 생성 후 발송 전 상태로 들고 있음
+let currentDocSignature = null;  // 마지막으로 생성한 시점의 품목/문서종류/날짜 스냅샷 (재생성 필요 여부 감지용)
 
 let googleAccessToken = null;
 let googleTokenExpiresAt = 0;
@@ -218,9 +219,9 @@ function saveSync() { localStorage.setItem(SYNC_KEY, JSON.stringify(syncConfig))
 function loadGoogleConfig() {
   try {
     const raw = localStorage.getItem(GOOGLE_KEY);
-    if (raw) return Object.assign({ clientId: '' }, JSON.parse(raw));
+    if (raw) return Object.assign({ clientId: '', hasConsented: false }, JSON.parse(raw));
   } catch (e) {}
-  return { clientId: '' };
+  return { clientId: '', hasConsented: false };
 }
 function saveGoogleConfigToStorage() { localStorage.setItem(GOOGLE_KEY, JSON.stringify(googleConfig)); }
 
@@ -304,7 +305,6 @@ function goToCustomerEdit(id) {
   document.getElementById('ce-manager-phone').value = c ? c.managerPhone : '';
   document.getElementById('ce-manager-email').value = c ? c.managerEmail : '';
   document.getElementById('ce-honorific').value = c ? c.honorific : '';
-  document.getElementById('ce-drive-folder').value = c ? (c.driveFolderId || '') : '';
   document.getElementById('ce-delete-wrap').style.display = c ? '' : 'none';
   showScreen('screen-customer-edit');
 }
@@ -320,8 +320,7 @@ function saveCustomer() {
     managerName: document.getElementById('ce-manager-name').value.trim(),
     managerPhone: document.getElementById('ce-manager-phone').value.trim(),
     managerEmail: document.getElementById('ce-manager-email').value.trim(),
-    honorific: document.getElementById('ce-honorific').value.trim(),
-    driveFolderId: document.getElementById('ce-drive-folder').value.trim()
+    honorific: document.getElementById('ce-honorific').value.trim()
   };
   if (editingCustomerId) {
     const c = getCustomerById(editingCustomerId);
@@ -369,10 +368,16 @@ function openDocScreen(customerId) {
   loadLastItems(true);
   document.getElementById('doc-unpaid').value = '';
   document.getElementById('doc-status-area').innerHTML = '';
+  document.getElementById('doc-send-date').value = formatDateISO(new Date());
   vatEnabled = false;
   document.getElementById('vat-toggle').classList.remove('on');
+  currentGeneratedDocs = [];
+  currentDocSignature = null;
+  updateSendBtnState();
   showScreen('screen-doc');
 }
+
+function onDocDateChanged() { updateSendBtnState(); }
 
 function toggleVat() {
   vatEnabled = !vatEnabled;
@@ -389,6 +394,27 @@ function renderDocTypeChips() {
 function toggleDocType(dt) {
   if (selectedDocTypes.has(dt)) selectedDocTypes.delete(dt); else selectedDocTypes.add(dt);
   renderDocTypeChips();
+  updateSendBtnState();
+}
+
+// 생성된 PDF가 지금 화면의 품목/문서종류/날짜와 아직 일치하는지 스냅샷으로 비교
+function computeDocSignature() {
+  const dateEl = document.getElementById('doc-send-date');
+  const unpaidEl = document.getElementById('doc-unpaid');
+  return JSON.stringify({
+    docTypes: Array.from(selectedDocTypes).sort(),
+    items: currentItems,
+    vat: vatEnabled,
+    date: dateEl ? dateEl.value : '',
+    unpaid: unpaidEl ? unpaidEl.value : ''
+  });
+}
+function updateSendBtnState() {
+  const btn = document.getElementById('doc-send-btn');
+  if (!btn) return;
+  const stale = currentGeneratedDocs.length === 0 || currentDocSignature !== computeDocSignature();
+  btn.disabled = stale;
+  btn.textContent = (currentGeneratedDocs.length > 0 && stale) ? '📤 발송하기 (품목이 바뀜 — 다시 생성해주세요)' : '📤 발송하기';
 }
 
 function blankItem() { return { name: '', spec: '', qty: '', price: '' }; }
@@ -468,6 +494,7 @@ function updateTotalsDisplay() {
   document.getElementById('doc-total-display').textContent = vatEnabled
     ? `공급가액 ${fmtNum(supplySum)}원 + 부가세 ${fmtNum(vatSum)}원 = 합계 ${fmtNum(supplySum + vatSum)}원`
     : `합계 ${fmtNum(supplySum)}원 (부가세 미적용)`;
+  updateSendBtnState();
 }
 
 function showDocStatus(kind, msg) {
@@ -677,6 +704,8 @@ function requestGoogleToken(promptMode) {
         if (resp.error) { reject(new Error('구글 로그인 실패: ' + resp.error)); return; }
         googleAccessToken = resp.access_token;
         googleTokenExpiresAt = Date.now() + (Number(resp.expires_in) || 3300) * 1000;
+        googleConfig.hasConsented = true;
+        saveGoogleConfigToStorage();
         renderGoogleAuthStatus();
         resolve(googleAccessToken);
       };
@@ -684,9 +713,19 @@ function requestGoogleToken(promptMode) {
     }).catch(reject);
   });
 }
+// 한번 로그인(동의)해둔 적이 있으면 이후엔 조용히(prompt 없이) 토큰을 다시 받아옴.
+// 조용한 갱신이 실패할 때만(세션 만료 등) 계정 선택/동의 화면을 띄움.
 async function ensureValidToken() {
   if (googleAccessToken && Date.now() < googleTokenExpiresAt - 60000) return googleAccessToken;
-  return requestGoogleToken(googleAccessToken ? '' : 'consent');
+  if (googleConfig.hasConsented) {
+    try { return await requestGoogleToken(''); } catch (e) { /* 아래에서 동의화면으로 재시도 */ }
+  }
+  return requestGoogleToken('consent');
+}
+// 앱 켤 때 백그라운드로 미리 조용히 토큰을 받아둠 — 발송 버튼 눌렀을 때 기다리는 시간을 줄임
+async function trySilentGoogleLogin() {
+  if (!googleConfig.clientId || !googleConfig.hasConsented) return;
+  try { await requestGoogleToken(''); } catch (e) { /* 조용히 무시 — 발송 시점에 다시 시도됨 */ }
 }
 async function startGoogleLogin() {
   try {
@@ -730,17 +769,35 @@ async function apiFetch(url, opts) {
   return json;
 }
 
-async function ensureCustomerFolder(customer, token) {
-  if (customer.driveFolderId) return customer.driveFolderId;
-  if (!appData.supplier.rootFolderId) throw new Error('설정에서 구글드라이브 상위 폴더 ID를 입력해주세요.');
-  const json = await apiFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: customer.name, mimeType: 'application/vnd.google-apps.folder', parents: [appData.supplier.rootFolderId] })
+// 거래처 이름을 GitHub 경로에 쓸 수 있게 다듬음 (슬래시 등 경로 문자 제거)
+function sanitizePathSegment(s) {
+  return String(s || '').replace(/[\/\\:*?"<>|]/g, '_').trim() || 'unknown';
+}
+
+// PDF를 이 저장소의 pdf-archive/{거래처명}/ 아래에 올림 (Google Drive 대신 GitHub에 보관)
+async function uploadPdfToGithub(customer, filename, blob) {
+  if (!syncConfig.token) throw new Error('설정에서 GitHub 토큰을 먼저 연결해주세요.');
+  const base64Data = await blobToBase64(blob);
+  const path = `pdf-archive/${sanitizePathSegment(customer.name)}/${filename}`;
+  const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/` +
+    path.split('/').map(encodeURIComponent).join('/');
+  let sha;
+  try {
+    const existing = await fetch(apiUrl + '?ref=' + GITHUB_BRANCH, { headers: { Authorization: 'token ' + syncConfig.token } });
+    if (existing.ok) { const j = await existing.json(); sha = j.sha; }
+  } catch (e) { /* 없으면 새로 생성 */ }
+  const res = await fetch(apiUrl, {
+    method: 'PUT',
+    headers: { Authorization: 'token ' + syncConfig.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign(
+      { message: `PDF 저장: ${customer.name} / ${filename}`, content: base64Data, branch: GITHUB_BRANCH },
+      sha ? { sha } : {}
+    ))
   });
-  customer.driveFolderId = json.id;
-  saveData();
-  return json.id;
+  const json = await res.json();
+  if (!res.ok) throw new Error((json && json.message) || 'GitHub 업로드 실패');
+  return (json.content && json.content.download_url) ||
+    `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${path}`;
 }
 
 function blobToBase64(blob) {
@@ -749,23 +806,6 @@ function blobToBase64(blob) {
     reader.onloadend = () => resolve(String(reader.result).split(',')[1]);
     reader.onerror = reject;
     reader.readAsDataURL(blob);
-  });
-}
-
-async function uploadFileToDrive(folderId, filename, blob, token) {
-  const base64Data = await blobToBase64(blob);
-  const boundary = '-------hnf' + Date.now();
-  const delimiter = '\r\n--' + boundary + '\r\n';
-  const closeDelim = '\r\n--' + boundary + '--';
-  const metadata = { name: filename, parents: [folderId], mimeType: 'application/pdf' };
-  const body =
-    delimiter + 'Content-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(metadata) +
-    delimiter + 'Content-Type: application/pdf\r\nContent-Transfer-Encoding: base64\r\n\r\n' + base64Data +
-    closeDelim;
-  return apiFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'multipart/related; boundary="' + boundary + '"' },
-    body
   });
 }
 
@@ -805,14 +845,59 @@ async function sendGmail(to, subject, bodyText, attachments, token) {
 }
 
 /* ============================================================
-   생성 및 발송
+   PDF 생성 (발송과 분리 — 여기선 네트워크 호출 없이 PDF만 만듦)
    ============================================================ */
-async function generateAndSend(isRetry) {
+function parseDocDate() {
+  const v = document.getElementById('doc-send-date').value;
+  if (!v) return new Date();
+  const [y, m, d] = v.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+async function generateDocsOnly() {
   const customer = getCustomerById(currentCustomerId);
   if (!customer) return;
   if (selectedDocTypes.size === 0) { showDocStatus('warn', '문서 종류를 1개 이상 선택해주세요.'); return; }
   const items = currentItems.filter(it => it.name && it.name.trim());
   if (items.length === 0) { showDocStatus('warn', '품목을 1개 이상 입력해주세요.'); return; }
+
+  const genBtn = document.getElementById('doc-generate-btn');
+  genBtn.disabled = true;
+  try {
+    showDocStatus('info', 'PDF 생성 중...');
+    const docDate = parseDocDate();
+    const fileDate = formatDateCompact(docDate);
+    const unpaid = document.getElementById('doc-unpaid').value.trim();
+
+    const docs = [];
+    for (const dt of Array.from(selectedDocTypes)) {
+      const blob = await renderDocToPdfBlob(dt, customer, items, unpaid, docDate);
+      const filename = `${fileDate}_${customer.name}_${DOC_LABELS[dt]}.pdf`;
+      docs.push({ docType: dt, blob, filename });
+    }
+    currentGeneratedDocs = docs;
+    currentDocSignature = computeDocSignature();
+    updateSendBtnState();
+
+    showDocStatus('success', `✅ PDF 생성 완료 — ${docs.map(d => d.filename).join(', ')}`);
+  } catch (err) {
+    console.error(err);
+    showDocStatus('danger', '생성 오류: ' + (err && err.message ? err.message : String(err)));
+  } finally {
+    genBtn.disabled = false;
+  }
+}
+
+/* ============================================================
+   발송 (이미 생성된 PDF를 GitHub에 백업 + 이메일로 전송)
+   ============================================================ */
+async function sendGeneratedDocs(isRetry) {
+  const customer = getCustomerById(currentCustomerId);
+  if (!customer) return;
+  if (currentGeneratedDocs.length === 0 || currentDocSignature !== computeDocSignature()) {
+    showDocStatus('warn', '먼저 "PDF 생성"을 눌러주세요 (품목이 바뀌었다면 다시 생성해주세요).');
+    return;
+  }
   if (!customer.managerEmail) { showDocStatus('warn', '이 거래처는 담당자 이메일이 없어요. 주소록에서 먼저 입력해주세요.'); return; }
   if (!googleConfig.clientId) { showDocStatus('warn', '설정에서 구글 OAuth 클라이언트 ID를 먼저 등록해주세요.'); return; }
 
@@ -821,25 +906,11 @@ async function generateAndSend(isRetry) {
   try {
     showDocStatus('info', '구글 로그인 확인 중...');
     const token = await ensureValidToken();
+    const docs = currentGeneratedDocs;
 
-    showDocStatus('info', 'PDF 생성 중...');
-    const now = new Date();
-    const fileDate = formatDateCompact(now);
-    const unpaid = document.getElementById('doc-unpaid').value.trim();
-
-    const docs = [];
-    for (const dt of Array.from(selectedDocTypes)) {
-      const blob = await renderDocToPdfBlob(dt, customer, items, unpaid, now);
-      const filename = `${fileDate}_${customer.name}_${DOC_LABELS[dt]}.pdf`;
-      docs.push({ docType: dt, blob, filename });
-    }
-
-    showDocStatus('info', '구글드라이브에 백업 중...');
-    const folderId = await ensureCustomerFolder(customer, token);
+    showDocStatus('info', 'GitHub에 백업 중...');
     for (const d of docs) {
-      const up = await uploadFileToDrive(folderId, d.filename, d.blob, token);
-      d.driveLink = up.webViewLink;
-      d.driveFileId = up.id;
+      d.fileUrl = await uploadPdfToGithub(customer, d.filename, d.blob);
     }
 
     showDocStatus('info', '이메일 발송 중...');
@@ -850,22 +921,26 @@ async function generateAndSend(isRetry) {
     for (const d of docs) attachments.push({ filename: d.filename, base64: await blobToBase64(d.blob) });
     await sendGmail(customer.managerEmail, subject, bodyText, attachments, token);
 
-    const nowIso = now.toISOString();
+    const docDate = parseDocDate();
+    const docIso = docDate.toISOString();
+    const nowIso = new Date().toISOString();
+    const items = currentItems.filter(it => it.name && it.name.trim());
     docs.forEach(d => {
       appData.sends.unshift({
         id: 's_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
         customerId: customer.id,
-        date: nowIso,
+        date: docIso,
+        sentAt: nowIso,
         docType: d.docType,
         fileName: d.filename,
-        driveLink: d.driveLink,
+        fileUrl: d.fileUrl,
         sender: 'suhyunfabric'
       });
     });
     appData.transactions.unshift({
       id: 't_' + Date.now(),
       customerId: customer.id,
-      date: nowIso,
+      date: docIso,
       items: items.map(it => ({ name: it.name, spec: it.spec, qty: it.qty, price: it.price })),
       docTypes: Array.from(selectedDocTypes)
     });
@@ -879,11 +954,60 @@ async function generateAndSend(isRetry) {
       googleAccessToken = null;
       showDocStatus('warn', '로그인이 만료되어 다시 로그인합니다...');
       sendBtn.disabled = false;
-      return generateAndSend(true);
+      return sendGeneratedDocs(true);
     }
     showDocStatus('danger', '오류: ' + (err && err.message ? err.message : String(err)));
   } finally {
     sendBtn.disabled = false;
+  }
+}
+
+/* ============================================================
+   발송이력에서 다시 보내기 (재생성 없이, GitHub에 있던 그 PDF 그대로)
+   ============================================================ */
+async function resendHistoryItem(sendId, isRetry) {
+  const record = appData.sends.find(s => s.id === sendId);
+  if (!record) return;
+  const customer = getCustomerById(record.customerId);
+  if (!customer) { alert('삭제된 거래처예요.'); return; }
+  if (!customer.managerEmail) { alert('이 거래처는 담당자 이메일이 없어요. 주소록에서 먼저 입력해주세요.'); return; }
+  if (!record.fileUrl) { alert('이 기록은 GitHub 백업 링크가 없어서 다시 보낼 수 없어요.'); return; }
+  if (!confirm(`${customer.name} · ${DOC_LABELS[record.docType] || record.docType} (${record.fileName})\n이 문서를 다시 보낼까요?`)) return;
+
+  try {
+    const token = await ensureValidToken();
+    const res = await fetch(record.fileUrl);
+    if (!res.ok) throw new Error('GitHub에서 PDF를 못 불러왔어요');
+    const blob = await res.blob();
+    const base64 = await blobToBase64(blob);
+
+    const greeting = customer.honorific ? customer.honorific : (customer.name + ' 담당자');
+    const subject = record.fileName.replace(/\.pdf$/, '') + ' (재발송)';
+    const bodyText = `안녕하세요 ${greeting}님,\n\n${DOC_LABELS[record.docType] || record.docType} 다시 첨부해드립니다.\n감사합니다.\n\n혀니네홈패션 드림`;
+    await sendGmail(customer.managerEmail, subject, bodyText, [{ filename: record.fileName, base64 }], token);
+
+    appData.sends.unshift({
+      id: 's_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      customerId: customer.id,
+      date: record.date,
+      sentAt: new Date().toISOString(),
+      docType: record.docType,
+      fileName: record.fileName,
+      fileUrl: record.fileUrl,
+      sender: 'suhyunfabric',
+      resendOf: record.id
+    });
+    saveData();
+    maybeAutoSync();
+    alert('✅ 다시 보냈어요!');
+    renderHistory();
+  } catch (err) {
+    console.error(err);
+    if (err && err.status === 401 && !isRetry) {
+      googleAccessToken = null;
+      return resendHistoryItem(sendId, true);
+    }
+    alert('재발송 실패: ' + (err && err.message ? err.message : String(err)));
   }
 }
 
@@ -913,13 +1037,16 @@ function renderHistory() {
     const c = getCustomerById(s.customerId);
     const d = new Date(s.date);
     return `
-    <div class="history-item" onclick="openHistoryLink('${s.driveLink || ''}')">
-      <div class="history-date">${formatDateISO(d)}</div>
+    <div class="history-item" onclick="openHistoryLink('${s.fileUrl || ''}')">
+      <div class="history-date">${formatDateISO(d)}${s.resendOf ? ' <span class="history-resend-tag">재발송</span>' : ''}</div>
       <div class="history-main">
         <div class="history-doctype">${escapeHtml(c ? c.name : '(삭제된 거래처)')} · ${DOC_LABELS[s.docType] || s.docType}</div>
         <div class="history-filename">${escapeHtml(s.fileName)}</div>
       </div>
-      <div>${s.driveLink ? '📄' : ''}</div>
+      <div class="history-actions">
+        <div>${s.fileUrl ? '📄' : ''}</div>
+        <button class="btn-sm btn-edit" onclick="event.stopPropagation();resendHistoryItem('${s.id}')" ${s.fileUrl ? '' : 'disabled'}>🔁 다시 보내기</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -964,8 +1091,6 @@ function renderSettings() {
   document.getElementById('sup-phone').value = s.phone || '';
   document.getElementById('sup-fax').value = s.fax || '';
   document.getElementById('sup-bank').value = s.bank || '';
-  document.getElementById('sup-root-folder').value = s.rootFolderId || '';
-
   document.getElementById('github-token').value = syncConfig.token || '';
   const actionCard = document.getElementById('sync-action-card');
   if (syncConfig.token) {
@@ -990,7 +1115,6 @@ function saveSupplierInfo() {
   appData.supplier.phone = document.getElementById('sup-phone').value.trim();
   appData.supplier.fax = document.getElementById('sup-fax').value.trim();
   appData.supplier.bank = document.getElementById('sup-bank').value.trim();
-  appData.supplier.rootFolderId = document.getElementById('sup-root-folder').value.trim();
   saveData();
   maybeAutoSync();
   alert('저장되었어요');
@@ -1001,8 +1125,8 @@ function showGoogleSetupGuide() {
     '구글 클라우드 OAuth 클라이언트 발급 방법 (suhyunfabric@gmail.com으로 로그인 후 진행)\n\n' +
     '1. console.cloud.google.com 접속 후 suhyunfabric@gmail.com으로 로그인\n' +
     '2. 상단 "프로젝트 선택" → "새 프로젝트" → 이름 입력(예: hnf-docs) → 만들기\n' +
-    '3. 좌측 메뉴 "API 및 서비스" → "라이브러리"에서 다음 2개를 각각 검색해 "사용 설정":\n' +
-    '   - Gmail API\n   - Google Drive API\n' +
+    '3. 좌측 메뉴 "API 및 서비스" → "라이브러리"에서 검색해 "사용 설정":\n' +
+    '   - Gmail API\n' +
     '4. "API 및 서비스" → "OAuth 동의화면"\n' +
     '   - User Type: 외부 선택 → 만들기\n' +
     '   - 앱 이름/지원 이메일 등 입력 (테스트 단계로 충분, 게시 필요 없음)\n' +
@@ -1014,8 +1138,7 @@ function showGoogleSetupGuide() {
     '     예) https://psw9715-debug.github.io\n' +
     '   - 만들기 → 발급된 "클라이언트 ID" 복사\n' +
     '6. 이 화면의 "Google OAuth 클라이언트 ID"란에 붙여넣고 저장\n\n' +
-    '⚠️ 테스트 모드 앱은 suhyunfabric@gmail.com처럼 테스트 사용자로 등록된 계정만 로그인할 수 있어요.\n' +
-    '⚠️ 이 앱은 기존 폴더에 파일을 쓰기 위해 전체 Drive 권한(전체 파일 접근)을 요청합니다 — 테스트 모드에서는 "확인되지 않은 앱" 경고가 뜰 수 있어요. "고급"→"이동(안전하지 않음)"을 눌러 진행하면 됩니다 (본인 계정만 사용하는 테스트 앱이라 안전합니다).'
+    '⚠️ 테스트 모드 앱은 suhyunfabric@gmail.com처럼 테스트 사용자로 등록된 계정만 로그인할 수 있어요.'
   );
 }
 
@@ -1060,9 +1183,10 @@ async function verifyToken() {
     const gists = await gistsRes.json();
     const existing = Array.isArray(gists) ? gists.find(g => g.files && g.files[GIST_FILENAME]) : null;
     if (existing) syncConfig.gistId = existing.id;
+    syncConfig.autoSync = true; // 토큰 연결하면 자동동기화도 바로 켜서 매번 물어보지 않게 함
     saveSync();
 
-    resultEl.innerHTML = '<div class="status-box success">✅ 연결되었어요!</div>';
+    resultEl.innerHTML = '<div class="status-box success">✅ 연결되었어요! (자동동기화 켜짐)</div>';
     renderSettings();
   } catch (e) {
     resultEl.innerHTML = `<div class="status-box danger">${escapeHtml(e.message || String(e))}</div>`;
@@ -1166,4 +1290,5 @@ window.addEventListener('DOMContentLoaded', () => {
   googleConfig = loadGoogleConfig();
   saveData();
   renderMainList();
+  trySilentGoogleLogin();
 });

@@ -76,7 +76,7 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
 .item-actions { display: flex; gap: 6px; margin-left: auto; }
 .icon-sm { width: 30px; height: 30px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
 .icon-sm.danger { background: var(--danger2); color: var(--danger); border-color: transparent; }
-.item-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.item-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
 .item-grid input { padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 15px; background: var(--surface); font-weight: 600; min-height: 44px; }
 .item-amount { text-align: right; font-size: 13px; color: var(--text2); font-weight: 700; margin-top: 8px; }
 .sync-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--accent2); border: 1.5px solid #B8D4C0; border-radius: var(--radius-sm); margin-bottom: 12px; font-size: 13px; font-weight: 700; color: var(--accent); cursor: pointer; }
@@ -105,6 +105,9 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
 .history-main { flex: 1; }
 .history-doctype { font-size: 14px; font-weight: 800; }
 .history-filename { font-size: 12px; color: var(--text2); margin-top: 2px; font-weight: 500; }
+.history-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.history-actions .btn-sm { padding: 6px 10px; min-height: 32px; font-size: 12px; white-space: nowrap; }
+.history-resend-tag { background: var(--accent2, #E4E0D5); color: var(--text); border-radius: 6px; padding: 1px 6px; font-size: 10px; margin-left: 4px; }
 .status-box { border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 12px; font-size: 14px; font-weight: 700; line-height: 1.7; }
 .status-box.info { background: var(--info2); color: var(--info); }
 .status-box.warn { background: var(--warn2); color: var(--warn); }
@@ -251,10 +254,6 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
         <label class="form-label">호칭 (메일 인사말에 사용)</label>
         <input class="form-input" id="ce-honorific" placeholder="예: 이승운 팀장님">
       </div>
-      <div class="form-group">
-        <label class="form-label">구글드라이브 폴더 ID (선택)</label>
-        <input class="form-input" id="ce-drive-folder" placeholder="비워두면 첫 발송 시 자동 생성돼요">
-      </div>
     </div>
     <div id="ce-delete-wrap" style="display:none">
       <button class="btn-ghost" style="color:var(--danger);border-color:var(--danger2)" onclick="deleteCustomer()">🗑 이 거래처 삭제</button>
@@ -290,6 +289,10 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
         <button class="chip" id="chip-confirm" onclick="toggleDocType('confirm')">납품확인서</button>
         <button class="chip" id="chip-quote" onclick="toggleDocType('quote')">견적서</button>
       </div>
+      <div class="form-group" style="margin-top:14px;margin-bottom:0">
+        <label class="form-label">발송일자 (문서에 찍히는 날짜)</label>
+        <input class="form-input" type="date" id="doc-send-date" onchange="onDocDateChanged()">
+      </div>
     </div>
 
     <div class="card">
@@ -315,15 +318,16 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
       <div class="info-text" id="doc-total-display" style="font-size:15px;color:var(--text);font-weight:800"></div>
       <div class="form-group" style="margin-top:14px;margin-bottom:0">
         <label class="form-label">미수금 (거래명세표, 선택)</label>
-        <input class="form-input" id="doc-unpaid" placeholder="비워두면 공란으로 표시">
+        <input class="form-input" id="doc-unpaid" placeholder="비워두면 공란으로 표시" oninput="updateSendBtnState()">
       </div>
     </div>
 
     <div id="doc-status-area"></div>
     <div style="height:90px"></div>
   </div>
-  <div class="bottom-bar no-print">
-    <button class="btn-primary" id="doc-send-btn" onclick="generateAndSend()">생성 및 발송</button>
+  <div class="bottom-bar no-print" style="display:flex;gap:8px">
+    <button class="btn-secondary" id="doc-generate-btn" style="flex:1" onclick="generateDocsOnly()">📄 PDF 생성</button>
+    <button class="btn-primary" id="doc-send-btn" style="flex:1" onclick="sendGeneratedDocs()" disabled>📤 발송하기</button>
   </div>
 </div>
 
@@ -371,8 +375,8 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
     </div>
 
     <div class="card">
-      <div class="card-title">구글 계정 (Gmail 발송 · Drive 백업)</div>
-      <div class="info-text" style="margin-bottom:12px">suhyunfabric@gmail.com 으로 로그인하세요. 로그인은 이 브라우저에서만 유지되며 약 1시간 후 만료됩니다.</div>
+      <div class="card-title">구글 계정 (Gmail 발송)</div>
+      <div class="info-text" style="margin-bottom:12px">suhyunfabric@gmail.com 으로 한 번만 로그인해두면, 이후엔 발송 버튼 누를 때 자동으로 로그인이 갱신돼요.</div>
       <div class="form-group">
         <label class="form-label">Google OAuth 클라이언트 ID</label>
         <input class="form-input" id="google-client-id" placeholder="xxxxx.apps.googleusercontent.com" autocapitalize="off">
@@ -400,7 +404,6 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
         <div class="form-group"><label class="form-label">팩스</label><input class="form-input" id="sup-fax"></div>
       </div>
       <div class="form-group"><label class="form-label">입금계좌</label><input class="form-input" id="sup-bank"></div>
-      <div class="form-group"><label class="form-label">구글드라이브 상위 폴더 ID</label><input class="form-input" id="sup-root-folder"></div>
       <button class="btn-secondary" onclick="saveSupplierInfo()">저장</button>
     </div>
 
