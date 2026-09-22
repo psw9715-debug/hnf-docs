@@ -354,6 +354,14 @@ function deleteCustomer() {
 /* ============================================================
    문서 작성 화면
    ============================================================ */
+// 이 거래처가 마지막으로 보낸 문서 종류를 기억해뒀다가 다음에 열 때 그대로 선택해줌
+// (예: 이 업체는 항상 납품확인서만 보낸다 → 다음에 열어도 납품확인서가 선택돼 있음)
+function lastDocTypesForCustomer(customerId) {
+  const last = appData.transactions.find(t => t.customerId === customerId && t.docTypes && t.docTypes.length);
+  if (last) return new Set(last.docTypes);
+  return new Set(['invoice']);
+}
+
 function openDocScreen(customerId) {
   currentCustomerId = customerId;
   const c = getCustomerById(customerId);
@@ -368,7 +376,7 @@ function openDocScreen(customerId) {
       담당자: ${escapeHtml(c.managerName || '-')} ${escapeHtml(c.managerPhone || '')}<br>
       이메일: ${c.managerEmail ? escapeHtml(c.managerEmail) : '<span style="color:var(--danger)">⚠️ 미등록 — 발송 전 주소록에서 입력해주세요</span>'}
     </div>`;
-  selectedDocTypes = new Set(['invoice']);
+  selectedDocTypes = lastDocTypesForCustomer(customerId);
   renderDocTypeChips();
   currentItems = [];
   loadLastItems(true);
@@ -484,10 +492,10 @@ function renderItemList() {
         </div>
       </div>
       <div class="item-grid">
-        <input placeholder="품명" value="${escapeAttr(it.name)}" oninput="updateItemField(${idx},'name',this.value)">
-        <input placeholder="규격" value="${escapeAttr(it.spec)}" oninput="updateItemField(${idx},'spec',this.value)">
-        <input placeholder="수량" inputmode="decimal" value="${escapeAttr(it.qty)}" oninput="updateItemField(${idx},'qty',this.value)">
-        <input placeholder="단가" inputmode="decimal" value="${escapeAttr(it.price)}" oninput="updateItemField(${idx},'price',this.value)">
+        <div class="item-field-row"><span class="item-field-label">품명</span><input placeholder="예: 방수 자루" value="${escapeAttr(it.name)}" oninput="updateItemField(${idx},'name',this.value)"></div>
+        <div class="item-field-row"><span class="item-field-label">규격</span><input placeholder="예: 1350X270" value="${escapeAttr(it.spec)}" oninput="updateItemField(${idx},'spec',this.value)"></div>
+        <div class="item-field-row"><span class="item-field-label">수량</span><input placeholder="0" inputmode="decimal" value="${escapeAttr(it.qty)}" oninput="updateItemField(${idx},'qty',this.value)"></div>
+        <div class="item-field-row"><span class="item-field-label">단가</span><input placeholder="0" inputmode="decimal" value="${escapeAttr(it.price)}" oninput="updateItemField(${idx},'price',this.value)"></div>
       </div>
       <div class="item-amount">공급가액 ${fmtNum(r.supply)}원${vatEnabled ? ' · 부가세 ' + fmtNum(r.vat) + '원' : ''}</div>
     </div>`;
