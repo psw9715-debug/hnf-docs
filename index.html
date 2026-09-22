@@ -77,7 +77,9 @@ textarea.form-input { min-height: 88px; resize: vertical; font-weight: 500; }
 .icon-sm { width: 30px; height: 30px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
 .icon-sm.danger { background: var(--danger2); color: var(--danger); border-color: transparent; }
 .item-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
-.item-grid input { padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 15px; background: var(--surface); font-weight: 600; min-height: 44px; }
+.item-field-row { display: flex; align-items: center; gap: 8px; }
+.item-field-label { flex: 0 0 40px; font-size: 13px; font-weight: 800; color: var(--text2); text-align: right; }
+.item-grid input { flex: 1; min-width: 0; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 15px; background: var(--surface); font-weight: 600; min-height: 44px; }
 .item-amount { text-align: right; font-size: 13px; color: var(--text2); font-weight: 700; margin-top: 8px; }
 .sync-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--accent2); border: 1.5px solid #B8D4C0; border-radius: var(--radius-sm); margin-bottom: 12px; font-size: 13px; font-weight: 700; color: var(--accent); cursor: pointer; }
 .sync-bar.off { background: var(--surface2); border-color: var(--border); color: var(--text3); }
