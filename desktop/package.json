@@ -1,0 +1,13 @@
+{
+  "name": "hnf-docs-desktop",
+  "version": "1.0.0",
+  "description": "혀니네홈패션 거래문서 자동화 앱 — PC용 (웹앱과 같은 코드, GitHub/Drive 이중 백업 + D:\\ 로컬 저장, 구글 로그인 자동 갱신)",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^32.0.0"
+  }
+}

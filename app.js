@@ -730,8 +730,19 @@ function requestGoogleToken(promptMode) {
 }
 // 한번 로그인(동의)해둔 적이 있으면 이후엔 조용히(prompt 없이) 토큰을 다시 받아옴.
 // 조용한 갱신이 실패할 때만(세션 만료 등) 계정 선택/동의 화면을 띄움.
+// 데스크톱 앱(window.electronAPI 존재)에서는 GIS 대신 메인 프로세스의 refresh_token
+// 기반 로그인을 씀 — 최초 1회만 동의하면 이후엔 브라우저 창조차 뜨지 않음.
 async function ensureValidToken() {
   if (googleAccessToken && Date.now() < googleTokenExpiresAt - 60000) return googleAccessToken;
+  if (window.electronAPI) {
+    const tok = await window.electronAPI.ensureGoogleToken();
+    googleAccessToken = tok.access_token;
+    googleTokenExpiresAt = Date.now() + (Number(tok.expires_in) || 3300) * 1000;
+    googleConfig.hasConsented = true;
+    saveGoogleConfigToStorage();
+    renderGoogleAuthStatus();
+    return googleAccessToken;
+  }
   if (googleConfig.hasConsented) {
     try { return await requestGoogleToken(''); } catch (e) { /* 아래에서 동의화면으로 재시도 */ }
   }
@@ -739,11 +750,23 @@ async function ensureValidToken() {
 }
 // 앱 켤 때 백그라운드로 미리 조용히 토큰을 받아둠 — 발송 버튼 눌렀을 때 기다리는 시간을 줄임
 async function trySilentGoogleLogin() {
+  if (window.electronAPI) {
+    try {
+      const has = await window.electronAPI.hasStoredGoogleLogin();
+      if (has) await ensureValidToken();
+    } catch (e) { /* 조용히 무시 */ }
+    return;
+  }
   if (!googleConfig.clientId || !googleConfig.hasConsented) return;
   try { await requestGoogleToken(''); } catch (e) { /* 조용히 무시 — 발송 시점에 다시 시도됨 */ }
 }
 async function startGoogleLogin() {
   try {
+    if (window.electronAPI) {
+      await ensureValidToken();
+      alert('구글 로그인 완료! 이제 문서를 생성/발송할 수 있어요.');
+      return;
+    }
     saveGoogleClientId(true);
     await requestGoogleToken('consent');
     alert('구글 로그인 완료! 이제 문서를 발송할 수 있어요.');
@@ -906,7 +929,7 @@ async function generateDocsOnly(isRetry) {
   if (selectedDocTypes.size === 0) { showDocStatus('warn', '문서 종류를 1개 이상 선택해주세요.'); return; }
   const items = currentItems.filter(it => it.name && it.name.trim());
   if (items.length === 0) { showDocStatus('warn', '품목을 1개 이상 입력해주세요.'); return; }
-  if (!googleConfig.clientId) { showDocStatus('warn', '설정에서 구글 OAuth 클라이언트 ID를 먼저 등록해주세요 (드라이브 백업에 필요해요).'); return; }
+  if (!googleConfig.clientId && !window.electronAPI) { showDocStatus('warn', '설정에서 구글 OAuth 클라이언트 ID를 먼저 등록해주세요 (드라이브 백업에 필요해요).'); return; }
 
   const genBtn = document.getElementById('doc-generate-btn');
   genBtn.disabled = true;
@@ -939,6 +962,15 @@ async function generateDocsOnly(isRetry) {
       d.driveFileId = up.id;
     }
 
+    // 데스크톱 앱에서는 D:\ 에도 그대로 한 부 저장 — 매번 네트워크 없이 바로 열어볼 수 있게
+    if (window.electronAPI) {
+      showDocStatus('info', '컴퓨터에 저장 중...');
+      for (const d of docs) {
+        const base64 = await blobToBase64(d.blob);
+        d.localPath = await window.electronAPI.savePdfLocal(customer.name, d.filename, base64);
+      }
+    }
+
     currentGeneratedDocs = docs;
     currentDocSignature = computeDocSignature();
     updateSendBtnState();
@@ -969,7 +1001,7 @@ async function sendGeneratedDocs(isRetry) {
     return;
   }
   if (!customer.managerEmail) { showDocStatus('warn', '이 거래처는 담당자 이메일이 없어요. 주소록에서 먼저 입력해주세요.'); return; }
-  if (!googleConfig.clientId) { showDocStatus('warn', '설정에서 구글 OAuth 클라이언트 ID를 먼저 등록해주세요.'); return; }
+  if (!googleConfig.clientId && !window.electronAPI) { showDocStatus('warn', '설정에서 구글 OAuth 클라이언트 ID를 먼저 등록해주세요.'); return; }
 
   const sendBtn = document.getElementById('doc-send-btn');
   sendBtn.disabled = true;
@@ -1003,6 +1035,7 @@ async function sendGeneratedDocs(isRetry) {
         fileName: d.filename,
         fileUrl: d.fileUrl,
         driveLink: d.driveLink,
+        localPath: d.localPath,
         comment: extraComment,
         sender: 'suhyunfabric'
       });
@@ -1175,6 +1208,51 @@ function renderSettings() {
     actionCard.style.display = 'none';
   }
   updateSyncBars();
+  renderDesktopSettingsIfNeeded();
+}
+
+// PC 앱(Electron)에서만 보이는 설정 카드 — 데스크톱 전용 구글 클라이언트, 로그인 상태, 로컬 저장 폴더
+async function renderDesktopSettingsIfNeeded() {
+  const slot = document.getElementById('desktop-settings-slot');
+  if (!slot) return;
+  if (!window.electronAPI) { slot.innerHTML = ''; return; }
+  const cfg = await window.electronAPI.getConfig();
+  const hasLogin = await window.electronAPI.hasStoredGoogleLogin();
+  const localRoot = await window.electronAPI.getLocalRoot();
+  slot.innerHTML = `
+    <div class="card">
+      <div class="card-title">🖥️ PC 앱 전용 설정</div>
+      <div class="info-text" style="margin-bottom:12px">여기서 쓰는 클라이언트는 반드시 <b>"데스크톱 앱"</b> 유형이어야 해요 (위의 웹용 클라이언트 ID와는 별개예요). 발급 방법은 desktop/README.md를 참고하세요.</div>
+      <div class="form-group">
+        <label class="form-label">데스크톱용 클라이언트 ID</label>
+        <input class="form-input" id="desktop-client-id" value="${escapeAttr(cfg.clientId || '')}" autocapitalize="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">데스크톱용 클라이언트 시크릿</label>
+        <input class="form-input" type="password" id="desktop-client-secret" value="${escapeAttr(cfg.clientSecret || '')}" autocomplete="off">
+      </div>
+      <button class="btn-secondary" onclick="saveDesktopGoogleConfig()" style="margin-bottom:10px">저장</button>
+      <div class="info-text" style="color:var(--text);font-weight:700;margin-bottom:10px">${hasLogin ? '✅ 로그인 정보 저장됨 (자동 갱신 — 다시 로그인 필요 없음)' : '⏳ 아직 로그인 안 함'}</div>
+      <div class="btn-row" style="margin-bottom:10px">
+        <button class="btn-primary" onclick="startGoogleLogin()">🔐 구글 로그인</button>
+        <button class="btn-ghost" onclick="forgetDesktopGoogleLogin()">로그아웃</button>
+      </div>
+      <div class="card-title" style="margin-top:14px">로컬 저장 폴더</div>
+      <div class="info-text" style="margin-bottom:10px">${escapeHtml(localRoot)}</div>
+      <button class="btn-secondary" onclick="window.electronAPI.openLocalFolder()">📂 폴더 열기</button>
+    </div>`;
+}
+async function saveDesktopGoogleConfig() {
+  const clientId = document.getElementById('desktop-client-id').value.trim();
+  const clientSecret = document.getElementById('desktop-client-secret').value.trim();
+  await window.electronAPI.setConfig({ clientId, clientSecret });
+  alert('저장되었어요');
+}
+async function forgetDesktopGoogleLogin() {
+  if (!confirm('저장된 로그인 정보를 지울까요? 다음 생성/발송 때 다시 로그인해야 해요.')) return;
+  await window.electronAPI.forgetGoogleLogin();
+  googleAccessToken = null;
+  renderDesktopSettingsIfNeeded();
 }
 
 function saveSupplierInfo() {
