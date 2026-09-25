@@ -153,6 +153,7 @@ function createWindow() {
     minHeight: 640,
     title: '혀니네홈패션 거래문서',
     backgroundColor: '#F5F3EE',
+    icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
